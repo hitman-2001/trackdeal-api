@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: trackdeal-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trackdeal-api
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - MONGODB_URI=mongodb+srv://bdswarajyaconsultancy_db_user:mayank123@cluster0.geljk4v.mongodb.net/?appName=Cluster0
+    depends_on:
+      - redis
+
+volumes:
+  redis_data:
+    driver: local
