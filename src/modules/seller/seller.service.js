@@ -25,7 +25,12 @@ class SellerService extends BaseService {
       if (exists) throw new ConflictError(`Seller with mobile '${data.mobile}' already exists`);
     }
 
-    const seller = await this.sellerRepository.create({ ...data, createdBy: actor.id });
+    const seller = await this.sellerRepository.create({
+      ...data,
+      organizationId: data.organizationId || actor.organizationId,
+      createdBy: actor.id,
+      updatedBy: actor.id,
+    });
     await this.publishEvent(EVENTS.SELLER_CREATED, { sellerId: seller.id });
     await this.logAudit({ action: AUDIT_ACTIONS.CREATE, entity: 'Seller', entityId: seller.id, userId: actor.id });
     return seller;

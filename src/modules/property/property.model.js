@@ -34,7 +34,7 @@ const propertySchema = new mongoose.Schema(
       city: { type: String, required: true },
       state: String,
       pincode: String,
-      coordinates: { type: { type: String, enum: ['Point'], default: 'Point' }, coordinates: [Number] },
+      coordinates: { type: { type: String, enum: ['Point'] }, coordinates: [Number] },
     },
 
     // Pricing
@@ -70,6 +70,17 @@ const propertySchema = new mongoose.Schema(
     // Media — referenced from files collection
     gallery: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }],
     documents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }],
+
+    // Multitenancy & Audit
+    organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', index: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    // Soft delete
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: Date,
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );
@@ -78,7 +89,7 @@ propertySchema.index({ status: 1, type: 1, 'location.city': 1 });
 propertySchema.index({ price: 1 });
 propertySchema.index({ seller: 1 });
 propertySchema.index({ project: 1 });
-propertySchema.index({ 'location.coordinates': '2dsphere' });
+propertySchema.index({ 'location.coordinates': '2dsphere' }, { sparse: true });
 propertySchema.index({ title: 'text', description: 'text', 'location.area': 'text' }, { name: 'property_text_search' });
 
 const Property = mongoose.model('Property', propertySchema);

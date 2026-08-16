@@ -75,6 +75,16 @@ async function authenticate(request, reply) {
   if (user.passwordChangedAt && decoded.iat * 1000 < user.passwordChangedAt.getTime()) {
     throw new UnauthorizedError('Your session has expired due to a recent password change. Please log in again.');
   }
+
+  // Synchronize authenticated tenant context for request lifetime
+  const tenantData = {
+    organizationId: decoded.organizationId || user.organizationId?.toString(),
+    branchId: decoded.branchId || user.branchId?.toString() || null,
+    organizationType: decoded.organizationType || 'AGENCY',
+    isSystemOverride: decoded.role === 'super_admin',
+  };
+  request.tenantContext = tenantData;
+  tenantContext._storage.enterWith(tenantData);
 }
 
 /**

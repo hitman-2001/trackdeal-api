@@ -7,6 +7,8 @@ const {
   LeadFollowUp,
   LeadAssignment,
   LeadStageHistory,
+  LeadVisit,
+  LeadQuotation,
 } = require("./lead.model");
 const { BaseRepository } = require("../../shared/base/BaseRepository");
 
@@ -18,43 +20,25 @@ class LeadRepository extends BaseRepository {
     super(Lead);
   }
 
-  /**
-   * Find leads assigned to a specific user.
-   */
   async findByAssignee(userId, pagination = {}) {
     return this.paginate(
       { assignedTo: userId, isDeleted: false },
-      {
-        sort: { createdAt: -1 },
-        ...pagination,
-      }
+      { sort: { createdAt: -1 }, ...pagination }
     );
   }
 
-  /**
-   * Find leads by status.
-   */
   async findByStatus(status, pagination = {}) {
     return this.paginate({ status, isDeleted: false }, pagination);
   }
 
-  /**
-   * Full-text search across lead name, mobile, email.
-   */
   async search(query, pagination = {}) {
-    const filter = {
-      $text: { $search: query },
-      isDeleted: false,
-    };
+    const filter = { $text: { $search: query }, isDeleted: false };
     return this.paginate(filter, {
       sort: { score: { $meta: "textScore" }, createdAt: -1 },
       ...pagination,
     });
   }
 
-  /**
-   * Lead source distribution aggregation (dashboard).
-   */
   async aggregateBySource(dateRange = {}) {
     const match = { isDeleted: false };
     if (dateRange.startDate) match.createdAt = { $gte: dateRange.startDate };
@@ -62,7 +46,6 @@ class LeadRepository extends BaseRepository {
       match.createdAt = match.createdAt || {};
       match.createdAt.$lte = dateRange.endDate;
     }
-
     return this.aggregate([
       { $match: match },
       { $group: { _id: "$source", count: { $sum: 1 } } },
@@ -70,9 +53,6 @@ class LeadRepository extends BaseRepository {
     ]);
   }
 
-  /**
-   * Lead status funnel aggregation (dashboard).
-   */
   async aggregateStatusFunnel() {
     return this.aggregate([
       { $match: { isDeleted: false } },
@@ -81,9 +61,6 @@ class LeadRepository extends BaseRepository {
     ]);
   }
 
-  /**
-   * Agent performance — lead counts by assignee.
-   */
   async aggregateByAgent() {
     return this.aggregate([
       { $match: { isDeleted: false } },
@@ -120,6 +97,17 @@ class LeadRepository extends BaseRepository {
 class LeadActivityRepository extends BaseRepository {
   constructor() {
     super(LeadActivity);
+  }
+
+  /**
+   * Aggregate activity counts by type for a lead (activity center summary).
+   */
+  async getActivitySummary(leadId) {
+    const ObjectId = require("mongoose").Types.ObjectId;
+    return this.aggregate([
+      { $match: { leadId: new ObjectId(leadId), isDeleted: { $ne: true } } },
+      { $group: { _id: "$type", count: { $sum: 1 } } },
+    ]);
   }
 }
 
@@ -159,6 +147,32 @@ class LeadStageHistoryRepository extends BaseRepository {
   }
 }
 
+// ---------------------------------------------------------------------------
+// LeadVisitRepository
+// ---------------------------------------------------------------------------
+class LeadVisitRepository extends BaseRepository {
+  constructor() {
+    super(LeadVisit);
+  }
+
+  async findByLeadId(leadId) {
+    return this.findMany({ leadId, isDeleted: false }, { sort: { visitDate: -1 } });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LeadQuotationRepository
+// ---------------------------------------------------------------------------
+class LeadQuotationRepository extends BaseRepository {
+  constructor() {
+    super(LeadQuotation);
+  }
+
+  async findByLeadId(leadId) {
+    return this.findMany({ leadId, isDeleted: false }, { sort: { quotedDate: -1 } });
+  }
+}
+
 module.exports = {
   LeadRepository,
   LeadActivityRepository,
@@ -166,4 +180,6 @@ module.exports = {
   LeadFollowUpRepository,
   LeadAssignmentRepository,
   LeadStageHistoryRepository,
+  LeadVisitRepository,
+  LeadQuotationRepository,
 };

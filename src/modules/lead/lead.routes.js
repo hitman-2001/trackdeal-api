@@ -107,6 +107,19 @@ async function leadRoutes(fastify, opts) {
   );
 
   fastify.post(
+    "/:id/transfer-agent",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_ASSIGN)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Transfer lead to Agent / Channel Partner",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.transferToAgent,
+  );
+
+  fastify.post(
     "/bulk-assign",
     {
       preHandler: [requirePermission(PERMISSIONS.LEADS_ASSIGN)],
@@ -213,6 +226,88 @@ async function leadRoutes(fastify, opts) {
       },
     },
     controller.markLost,
+  );
+
+  fastify.post(
+    "/:id/close-transaction",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Close lead with mandatory real estate transaction details",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.closeTransaction,
+  );
+
+  // ---------------------------------------------------------------------------
+  // Activity Center Routes
+  // ---------------------------------------------------------------------------
+
+  fastify.get(
+    "/:id/activity-center",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Get complete 360° activity center data for a lead",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.getActivityCenter,
+  );
+
+  fastify.post(
+    "/:id/visits",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Record a property / site visit for a lead",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.addVisit,
+  );
+
+  fastify.get(
+    "/:id/visits",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+      schema: {
+        tags: ["Leads"],
+        summary: "List all visits for a lead",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.listVisits,
+  );
+
+  fastify.post(
+    "/:id/quotations",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Record a new rate / quotation for a lead (history-preserving)",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.addQuotation,
+  );
+
+  fastify.get(
+    "/:id/quotations",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+      schema: {
+        tags: ["Leads"],
+        summary: "List all quotations / rate history for a lead",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.listQuotations,
   );
 }
 

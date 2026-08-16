@@ -347,16 +347,12 @@ class BaseRepository {
     }
 
     const { tenantContext } = require('../context/tenant-context');
-
-    // System bypass
-    if (tenantContext.isSystemOverride()) {
-      return data;
-    }
-
     const organizationId = tenantContext.getOrganizationId();
     const branchId = tenantContext.getBranchId();
 
-    if (!organizationId) {
+    const targetOrgId = data.organizationId || organizationId;
+
+    if (!targetOrgId && !tenantContext.isSystemOverride()) {
       throw new Error(
         `[SecurityError] Multi-tenant write isolation failure: organizationId is missing in execution context for model '${this.model.modelName}'.`
       );
@@ -364,7 +360,7 @@ class BaseRepository {
 
     return {
       ...data,
-      organizationId: data.organizationId || organizationId,
+      ...(targetOrgId ? { organizationId: targetOrgId } : {}),
       branchId: data.branchId || branchId || null,
     };
   }

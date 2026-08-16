@@ -7,7 +7,8 @@ class PropertyRepository extends BaseRepository {
   constructor() { super(Property); }
 
   async findAvailable(filters = {}, pagination = {}) {
-    const match = { status: 'available', isDeleted: false };
+    const match = { isDeleted: false };
+    if (filters.status) match.status = filters.status;
     if (filters.type) match.type = filters.type;
     if (filters.city) match['location.city'] = { $regex: filters.city, $options: 'i' };
     if (filters.minPrice) match.price = { ...match.price, $gte: filters.minPrice };

@@ -20,6 +20,7 @@ class PropertyService extends BaseService {
 
   async listProperties(query) {
     const filters = {
+      status: query.status,
       type: query.type,
       city: query.city,
       minPrice: query.minPrice ? Number(query.minPrice) : undefined,
@@ -34,7 +35,15 @@ class PropertyService extends BaseService {
   }
 
   async createProperty(data, actor) {
-    const property = await this.propertyRepository.create({ ...data, createdBy: actor.id, updatedBy: actor.id });
+    if (data.location && (!data.location.coordinates || !Array.isArray(data.location.coordinates.coordinates))) {
+      delete data.location.coordinates;
+    }
+    const property = await this.propertyRepository.create({
+      ...data,
+      organizationId: data.organizationId || actor.organizationId,
+      createdBy: actor.id,
+      updatedBy: actor.id,
+    });
 
     await this.publishEvent(EVENTS.PROPERTY_CREATED, { propertyId: property.id });
     await this.logAudit({ action: AUDIT_ACTIONS.CREATE, entity: 'Property', entityId: property.id, userId: actor.id });
@@ -44,6 +53,9 @@ class PropertyService extends BaseService {
 
   async updateProperty(id, data, actor) {
     const property = await this.propertyRepository.findByIdOrFail(id, 'Property');
+    if (data.location && (!data.location.coordinates || !Array.isArray(data.location.coordinates.coordinates))) {
+      delete data.location.coordinates;
+    }
 
     // Business rule: price changes must be audited
     if (data.price && data.price !== property.price) {

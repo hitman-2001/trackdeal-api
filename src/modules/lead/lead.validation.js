@@ -19,13 +19,13 @@ const leadIdParamSchema = {
 const createLeadSchema = {
   type: "object",
   required: ["firstName", "mobile", "source"],
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     firstName: { type: "string", minLength: 2, maxLength: 50 },
     lastName: { type: "string", maxLength: 50 },
     mobile: { type: "string", pattern: "^[0-9+ -]{5,20}$" },
-    alternativeMobile: { type: "string", pattern: "^[0-9+ -]{5,20}$" },
-    email: { type: "string", format: "email" },
+    alternativeMobile: { type: "string", pattern: "^([0-9+ -]{5,20})?$" },
+    email: { type: "string", anyOf: [{ format: "email" }, { type: "string", maxLength: 0 }] },
     source: {
       type: "string",
       enum: [
@@ -42,8 +42,8 @@ const createLeadSchema = {
       ],
     },
     sourceDetails: { type: "string", maxLength: 500 },
-    branchId: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
-    assignedTo: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+    branchId: { type: "string", pattern: "^([0-9a-fA-F]{24})?$" },
+    assignedTo: { type: "string", pattern: "^([0-9a-fA-F]{24})?$" },
     collaborators: {
       type: "array",
       items: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
@@ -86,13 +86,13 @@ const createLeadSchema = {
 
 const updateLeadSchema = {
   type: "object",
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     firstName: { type: "string", minLength: 2, maxLength: 50 },
     lastName: { type: "string", maxLength: 50 },
     mobile: { type: "string", pattern: "^[0-9+ -]{5,20}$" },
-    alternativeMobile: { type: "string", pattern: "^[0-9+ -]{5,20}$" },
-    email: { type: "string", format: "email" },
+    alternativeMobile: { type: "string", pattern: "^([0-9+ -]{5,20})?$" },
+    email: { type: "string", anyOf: [{ format: "email" }, { type: "string", maxLength: 0 }] },
     source: {
       type: "string",
       enum: [
@@ -109,8 +109,8 @@ const updateLeadSchema = {
       ],
     },
     sourceDetails: { type: "string", maxLength: 500 },
-    branchId: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
-    assignedTo: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+    branchId: { type: "string", pattern: "^([0-9a-fA-F]{24})?$" },
+    assignedTo: { type: "string", pattern: "^([0-9a-fA-F]{24})?$" },
     collaborators: {
       type: "array",
       items: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },

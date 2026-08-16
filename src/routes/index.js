@@ -27,6 +27,7 @@ const branchRoutes = require('../modules/branch/branch.routes');
 const taskRoutes = require('../modules/task/task.routes');
 const projectRoutes = require('../modules/project/project.routes');
 const commissionRoutes = require('../modules/commission/commission.routes');
+const agentRoutes = require('../modules/agent/agent.routes');
 
 // Imported modules
 const brokerageRoutes = require('../modules/brokerage/brokerage.routes');
@@ -79,6 +80,7 @@ async function registerRoutes(fastify, opts) {
   fastify.register(taskRoutes, { prefix: '/tasks' });
   fastify.register(projectRoutes, { prefix: '/projects' });
   fastify.register(commissionRoutes, { prefix: '/commissions' });
+  fastify.register(agentRoutes, { prefix: '/agents' });
 
   // Active module routes
   fastify.register(brokerageRoutes, { prefix: '/brokerage' });

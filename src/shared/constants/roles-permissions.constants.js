@@ -86,6 +86,13 @@ const PERMISSIONS = Object.freeze({
   LEADS_DELETE: 'leads.delete',
   LEADS_ASSIGN: 'leads.assign',
 
+  // Agents / Channel Partners
+  AGENTS_CREATE: 'agents.create',
+  AGENTS_READ: 'agents.read',
+  AGENTS_UPDATE: 'agents.update',
+  AGENTS_DELETE: 'agents.delete',
+  AGENTS_TRANSFER_LEAD: 'agents.transfer_lead',
+
   // Customers
   CUSTOMERS_CREATE: 'customers.create',
   CUSTOMERS_VIEW: 'customers.view',
@@ -197,6 +204,11 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.LEADS_UPDATE,
     PERMISSIONS.LEADS_DELETE,
     PERMISSIONS.LEADS_ASSIGN,
+    PERMISSIONS.AGENTS_CREATE,
+    PERMISSIONS.AGENTS_READ,
+    PERMISSIONS.AGENTS_UPDATE,
+    PERMISSIONS.AGENTS_DELETE,
+    PERMISSIONS.AGENTS_TRANSFER_LEAD,
     PERMISSIONS.CUSTOMERS_CREATE,
     PERMISSIONS.CUSTOMERS_VIEW,
     PERMISSIONS.CUSTOMERS_UPDATE,

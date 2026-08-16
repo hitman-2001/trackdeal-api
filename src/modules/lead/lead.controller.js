@@ -55,6 +55,15 @@ class LeadController extends BaseController {
     return this.ok(reply, lead, "Lead assigned successfully");
   }
 
+  async transferToAgent(request, reply) {
+    const lead = await this.leadService.transferLeadToAgent(
+      request.params.id,
+      request.body,
+      this.getUser(request)
+    );
+    return this.ok(reply, lead, "Lead transferred to Agent / Channel Partner successfully");
+  }
+
   async bulkAssign(request, reply) {
     const leads = await this.leadService.bulkAssign(
       request.body.leadIds,
@@ -131,6 +140,71 @@ class LeadController extends BaseController {
       this.getUser(request)
     );
     return this.ok(reply, lead, "Lead marked as lost");
+  }
+
+  async closeTransaction(request, reply) {
+    const result = await this.leadService.closeLeadWithTransaction(
+      request.params.id,
+      request.body,
+      this.getUser(request)
+    );
+    return this.created(reply, result, "Lead transaction closed successfully");
+  }
+
+  async getActivityCenter(request, reply) {
+    const data = await this.leadService.getActivityCenter(
+      request.params.id,
+      this.getUser(request)
+    );
+    return this.ok(reply, data);
+  }
+
+  async addVisit(request, reply) {
+    const visit = await this.leadService.addVisit(
+      request.params.id,
+      request.body,
+      this.getUser(request)
+    );
+    return this.created(reply, visit, "Visit recorded successfully");
+  }
+
+  async addQuotation(request, reply) {
+    const quotation = await this.leadService.addQuotation(
+      request.params.id,
+      request.body,
+      this.getUser(request)
+    );
+    return this.created(reply, quotation, "Quotation recorded successfully");
+  }
+
+  async listVisits(request, reply) {
+    const { LeadVisit } = require("./lead.model");
+    const visits = await LeadVisit.find({
+      leadId: request.params.id,
+      isDeleted: false,
+    })
+      .sort({ visitDate: -1 })
+      .populate("propertiesShown", "title unitNumber status")
+      .populate("projectId", "name")
+      .populate("salesExecutive", "firstName lastName")
+      .populate("agentId", "name officeName")
+      .populate("createdBy", "firstName lastName")
+      .lean();
+    return this.ok(reply, visits);
+  }
+
+  async listQuotations(request, reply) {
+    const { LeadQuotation } = require("./lead.model");
+    const quotations = await LeadQuotation.find({
+      leadId: request.params.id,
+      isDeleted: false,
+    })
+      .sort({ quotedDate: -1 })
+      .populate("propertyId", "title unitNumber")
+      .populate("projectId", "name")
+      .populate("quotedBy", "firstName lastName")
+      .lean();
+    return this.ok(reply, quotations);
   }
 }
 
