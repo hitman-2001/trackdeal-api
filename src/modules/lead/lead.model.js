@@ -110,6 +110,18 @@ const leadSchema = new mongoose.Schema(
       transferredAt: { type: Date, default: Date.now },
       remarks: { type: String, trim: true }
     }],
+    transfers: [{
+      fromOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", required: true },
+      toOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
+      toAgentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },
+      toUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+      transferredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      transferredByName: { type: String, trim: true },
+      fromOrganizationName: { type: String, trim: true },
+      transferredAt: { type: Date, default: Date.now },
+      status: { type: String, enum: ["transferred", "accepted", "rejected"], default: "transferred" },
+      remarks: { type: String, trim: true }
+    }],
 
     // Requirements & Buyer Preferences
     requirements: {
@@ -213,10 +225,23 @@ const leadSchema = new mongoose.Schema(
     // Custom fields
     customFields: { type: mongoose.Schema.Types.Mixed },
 
+    // Activity & Follow-up Tracking
+    lastActivityType: { type: String },
+    lastActivityAt: { type: Date },
+    nextFollowUpAt: { type: Date },
+
     // Loss Tracking
     lostReason: String,
     lostNotes: String,
     lostAt: Date,
+
+    // Customer Master Reference
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      index: true,
+      default: null,
+    },
 
     // Conversion
     convertedAt: Date,
@@ -230,11 +255,9 @@ const leadSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// High-Performance Indexes for Leads
-leadSchema.index(
-  { organizationId: 1, mobile: 1 },
-  { unique: true, partialFilterExpression: { isDeleted: false } }
-);
+// High-Performance Indexes for Leads (Non-unique mobile to allow multiple leads per customer)
+leadSchema.index({ organizationId: 1, mobile: 1 });
+leadSchema.index({ organizationId: 1, customerId: 1 });
 leadSchema.index({ organizationId: 1, status: 1, assignedTo: 1 });
 leadSchema.index({ organizationId: 1, branchId: 1, status: 1 });
 leadSchema.index({ organizationId: 1, source: 1, createdAt: -1 });
@@ -247,6 +270,9 @@ leadSchema.index(
 );
 
 const Lead = mongoose.model("Lead", leadSchema);
+
+// Safe cleanup of legacy unique index if present in existing MongoDB collection
+Lead.collection.dropIndex("organizationId_1_mobile_1").catch(() => {});
 
 // ---------------------------------------------------------------------------
 // 2. Lead Activity Model — Logs Calls, WhatsApp, Meetings, emails, etc.
@@ -276,6 +302,7 @@ const leadActivitySchema = new mongoose.Schema(
       type: String,
       enum: [
         "call",
+        "phone_call",
         "whatsapp",
         "meeting",
         "email",
@@ -290,6 +317,7 @@ const leadActivitySchema = new mongoose.Schema(
         "payment_discussion",
         "loan_discussion",
         "registration_discussion",
+        "registration",
         "note",
         "reminder",
         "other",
@@ -298,18 +326,36 @@ const leadActivitySchema = new mongoose.Schema(
       ],
       required: true,
     },
-    description: String,
+    activityDate: { type: Date, default: Date.now },
+    activityTime: { type: String, trim: true },
+    summary: { type: String, trim: true },
+    description: { type: String, trim: true },
+    customerResponse: { type: String, trim: true },
+    nextFollowUpAt: { type: Date, default: null },
+    status: {
+      type: String,
+      enum: ["scheduled", "completed", "pending", "cancelled", "missed", "rescheduled", "in_progress"],
+      default: "completed",
+    },
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     performedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    metadata: { type: mongoose.Schema.Types.Mixed },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: Date,
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }
 );
 
-leadActivitySchema.index({ organizationId: 1, leadId: 1, createdAt: -1 });
+leadActivitySchema.index({ organizationId: 1, leadId: 1, activityDate: -1, createdAt: -1 });
 leadActivitySchema.index({ organizationId: 1, type: 1, createdAt: -1 });
 leadActivitySchema.index({ organizationId: 1, performedBy: 1, createdAt: -1 });
 
@@ -381,29 +427,31 @@ const leadFollowUpSchema = new mongoose.Schema(
     scheduledAt: { type: Date, required: true, index: true },
     type: {
       type: String,
-      enum: ["call", "email", "whatsapp", "visit", "meeting"],
+      enum: ["call", "email", "whatsapp", "visit", "site_visit", "meeting", "general", "other"],
       required: true,
     },
     status: {
       type: String,
       enum: ["scheduled", "completed", "cancelled", "missed", "rescheduled", "escalated"],
       default: "scheduled",
-      required: true,
-      index: true,
     },
     notes: String,
+    outcome: String,
     completedAt: Date,
+    completedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    assignedTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
-    },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: Date,
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     escalatedAt: Date,
     escalationReason: String,
   },
@@ -541,7 +589,8 @@ const leadVisitSchema = new mongoose.Schema(
     whoAttended: { type: String },
     interestLevel: {
       type: String,
-      enum: ["very_interested", "interested", "maybe", "not_interested"],
+      enum: ["very_interested", "interested", "maybe", "not_interested", "not_assessed", null],
+      default: null,
     },
     customerFeedback: { type: String },
     likes: { type: String },

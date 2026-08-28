@@ -72,11 +72,17 @@ class DealController extends BaseController {
   }
 
   async transition(request, reply) {
-    const { status, cancellationReason } = request.body;
-    if (status === 'cancelled' && cancellationReason) {
+    const { status, stage, cancellationReason, ...closingPayload } = request.body || {};
+    const targetStatus = status || stage;
+    if (targetStatus === 'cancelled' && cancellationReason) {
       this.dealService.cancellationReason = cancellationReason;
     }
-    const deal = await this.dealService.transitionStage(request.params.id, status, this.getUser(request));
+    const deal = await this.dealService.transitionStage(
+      request.params.id,
+      targetStatus,
+      this.getUser(request),
+      closingPayload
+    );
     return this.ok(reply, deal);
   }
 }

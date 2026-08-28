@@ -40,6 +40,18 @@ async function leadRoutes(fastify, opts) {
   );
 
   fastify.get(
+    "/check-duplicate",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Check duplicate customer or lead profile by mobile, email, or name",
+      },
+    },
+    controller.checkDuplicate,
+  );
+
+  fastify.get(
     "/:id",
     {
       preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
@@ -284,6 +296,54 @@ async function leadRoutes(fastify, opts) {
     controller.listVisits,
   );
 
+  fastify.put(
+    "/:id/activities/:activityId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Update lead activity",
+      },
+    },
+    controller.updateActivity,
+  );
+
+  fastify.delete(
+    "/:id/activities/:activityId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Delete lead activity",
+      },
+    },
+    controller.deleteActivity,
+  );
+
+  fastify.put(
+    "/:id/visits/:visitId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Update lead visit",
+      },
+    },
+    controller.updateVisit,
+  );
+
+  fastify.delete(
+    "/:id/visits/:visitId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Delete lead visit",
+      },
+    },
+    controller.deleteVisit,
+  );
+
   fastify.post(
     "/:id/quotations",
     {
@@ -308,6 +368,78 @@ async function leadRoutes(fastify, opts) {
       },
     },
     controller.listQuotations,
+  );
+
+  fastify.put(
+    "/:id/quotations/:quotationId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Update lead quotation",
+      },
+    },
+    controller.updateQuotation,
+  );
+
+  fastify.delete(
+    "/:id/quotations/:quotationId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Delete lead quotation",
+      },
+    },
+    controller.deleteQuotation,
+  );
+
+  fastify.put(
+    "/:id/notes/:noteId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Update lead note",
+      },
+    },
+    controller.updateNote,
+  );
+
+  fastify.delete(
+    "/:id/notes/:noteId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Delete lead note",
+      },
+    },
+    controller.deleteNote,
+  );
+
+  fastify.put(
+    "/:id/follow-ups/:followUpId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Update lead follow-up",
+      },
+    },
+    controller.updateFollowUp,
+  );
+
+  fastify.delete(
+    "/:id/follow-ups/:followUpId",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Delete lead follow-up",
+      },
+    },
+    controller.deleteFollowUp,
   );
 }
 

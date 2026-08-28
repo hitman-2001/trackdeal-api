@@ -6,12 +6,76 @@ const mongoose = require("mongoose");
 // 1. Commission Model — Owner: Commission Module
 // ---------------------------------------------------------------------------
 
+const paymentRecordSchema = new mongoose.Schema(
+  {
+    paymentDate: { type: Date, default: Date.now, required: true },
+    amount: { type: Number, required: true, min: 0 },
+    paymentMethod: {
+      type: String,
+      enum: ["Bank Transfer", "Cheque", "UPI", "Cash", "NEFT", "RTGS", "IMPS", "Other", "bank_transfer", "cheque", "upi", "cash", "neft", "rtgs", "imps", "other"],
+      default: "Bank Transfer",
+    },
+    referenceNumber: { type: String, trim: true }, // UTR / Cheque Ref / Transaction ID
+    receivedFrom: { type: String, trim: true },
+    bankAccount: { type: String, trim: true },
+    tdsDeducted: { type: Boolean, default: false },
+    tdsAmount: { type: Number, default: 0 },
+    notes: { type: String, trim: true },
+    receiptUrl: { type: String, trim: true },
+    recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
+
+const milestoneSchema = new mongoose.Schema(
+  {
+    milestoneName: { type: String, required: true, trim: true }, // e.g. Booking, Agreement, Registration, Possession
+    expectedAmount: { type: Number, required: true, min: 0 },
+    expectedDate: { type: Date },
+    receivedAmount: { type: Number, default: 0 },
+    status: {
+      type: String,
+      enum: ["upcoming", "due", "partially_paid", "paid", "overdue"],
+      default: "upcoming",
+    },
+  },
+  { timestamps: true }
+);
+
+const documentSchema = new mongoose.Schema(
+  {
+    docType: { type: String, trim: true }, // Commission Agreement, Invoice, Payment Advice, Bank Receipt, Cheque Copy, TDS Certificate, Other
+    fileName: { type: String, trim: true },
+    fileUrl: { type: String, trim: true },
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 const commissionSchema = new mongoose.Schema(
   {
+    commissionNumber: {
+      type: String,
+      index: true,
+    },
+    sourceType: {
+      type: String,
+      enum: ["PROPERTY_DEAL", "LOAN", "CHANNEL_PARTNER", "OTHER", "property_deal", "loan", "channel_partner", "other"],
+      default: "PROPERTY_DEAL",
+      index: true,
+    },
     dealId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Deal",
-      required: true,
+      required: false,
+      default: null,
+      index: true,
+    },
+    loanCaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LoanCase",
+      required: false,
+      default: null,
       index: true,
     },
     organizationId: {
@@ -23,10 +87,85 @@ const commissionSchema = new mongoose.Schema(
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
-      required: false, // Optional: not required for INDIVIDUAL_AGENT / AGENCY tiers
+      required: false,
       default: null,
       index: true,
     },
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      index: true,
+    },
+    propertyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Property",
+      index: true,
+    },
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+      index: true,
+    },
+    unitNumber: {
+      type: String,
+      trim: true,
+    },
+
+    // Who owes and pays the commission
+    payablePartyType: {
+      type: String,
+      enum: [
+        "builder",
+        "seller",
+        "customer",
+        "channel_partner",
+        "broker",
+        "bank",
+        "dsa",
+        "financial_institution",
+        "other",
+        "Builder / Developer",
+        "Property Seller",
+        "Customer / Buyer",
+        "Channel Partner",
+        "Broker",
+        "Bank",
+        "DSA",
+        "Financial Institution",
+        "Other",
+      ],
+      default: "builder",
+      index: true,
+    },
+    payablePartyName: {
+      type: String,
+      trim: true,
+    },
+    payablePartyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
+    // Valuation & Rate Calculation
+    commissionType: {
+      type: String,
+      enum: ["percentage", "fixed", "slab", "other", "Percentage", "Fixed Amount", "Slab Based", "Other"],
+      default: "percentage",
+    },
+    commissionRate: {
+      type: Number,
+      default: 2,
+    },
+    finalDealValue: {
+      type: Number,
+      default: 0,
+    },
+    expectedPaymentDate: {
+      type: Date,
+      index: true,
+    },
+
+    // Financial Balances
     totalCommissionExpected: {
       type: Number,
       required: true,
@@ -40,40 +179,90 @@ const commissionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    commissionPercentage: {
+    tdsPercentage: {
       type: Number,
-      default: 3,
+      default: 5,
+    },
+    tdsAmount: {
+      type: Number,
+      default: 0,
+    },
+    taxGstAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    // Primary High-level Lifecycle Status
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "partially_paid", "fully_paid", "overdue", "UNPAID", "PARTIALLY PAID", "FULLY PAID", "OVERDUE"],
+      default: "unpaid",
+      index: true,
     },
     status: {
       type: String,
-      enum: [
-        "eligible",
-        "invoice_draft",
-        "invoice_raised",
-        "invoice_sent",
-        "payment_expected",
-        "partially_collected",
-        "fully_collected",
-        "payout_calculated",
-        "payout_eligible",
-        "payout_authorized",
-        "payout_released",
-        "closed",
-        "cancelled",
-        "clawed_back",
-      ],
       default: "eligible",
       index: true,
     },
+
+    // Embedded Ledgers
+    milestones: [milestoneSchema],
+    payments: [paymentRecordSchema],
+    documents: [documentSchema],
+
+    paymentTerms: String,
     notes: String,
+    remarks: String,
     isDeleted: {
       type: Boolean,
       default: false,
       index: true,
     },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
   },
   { timestamps: true }
 );
+
+// Auto-generate commissionNumber serial (e.g. COM-2026-0001)
+commissionSchema.pre("save", async function (next) {
+  if (!this.commissionNumber) {
+    const year = new Date().getFullYear();
+    const count = await this.constructor.countDocuments({
+      organizationId: this.organizationId,
+    });
+    this.commissionNumber = `COM-${year}-${String(count + 1).padStart(4, "0")}`;
+  }
+
+  // Ensure balance outstanding is in sync
+  const collected = (this.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  this.totalCommissionCollected = collected;
+  this.totalCommissionOutstanding = Math.max(0, (this.totalCommissionExpected || 0) - collected);
+
+  // Dynamic status computation
+  const now = new Date();
+  if (this.totalCommissionCollected >= this.totalCommissionExpected && this.totalCommissionExpected > 0) {
+    this.paymentStatus = "fully_paid";
+    this.status = "fully_collected";
+  } else if (this.totalCommissionCollected > 0) {
+    if (this.expectedPaymentDate && new Date(this.expectedPaymentDate) < now && this.totalCommissionOutstanding > 0) {
+      this.paymentStatus = "overdue";
+    } else {
+      this.paymentStatus = "partially_paid";
+    }
+    this.status = "partially_collected";
+  } else {
+    if (this.expectedPaymentDate && new Date(this.expectedPaymentDate) < now && this.totalCommissionOutstanding > 0) {
+      this.paymentStatus = "overdue";
+    } else {
+      this.paymentStatus = "unpaid";
+    }
+  }
+
+  next();
+});
 
 // High-Performance unique deal lock per organization
 commissionSchema.index(
@@ -84,6 +273,8 @@ commissionSchema.index(
     name: "unique_active_deal_commission",
   }
 );
+commissionSchema.index({ organizationId: 1, paymentStatus: 1 });
+commissionSchema.index({ organizationId: 1, expectedPaymentDate: 1 });
 
 // ---------------------------------------------------------------------------
 // 2. Commission Slab Model — Owner: Commission Module

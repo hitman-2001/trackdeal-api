@@ -83,6 +83,24 @@ const organizationSchema = new mongoose.Schema(
       trim: true,
     },
     
+    // Top-Level Status & Deletion
+    status: {
+      type: String,
+      enum: ['active', 'inactive', 'suspended', 'trial'],
+      default: 'active',
+      index: true,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: Date,
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+
     // SaaS Subscription Config
     subscription: {
       plan: {

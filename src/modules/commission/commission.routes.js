@@ -17,6 +17,16 @@ const controller = new CommissionController();
 async function commissionRoutes(fastify, opts) {
   fastify.addHook("preValidation", authenticate);
 
+  fastify.get("/summary", {
+    preHandler: [authorize(PERMISSIONS.COMMISSIONS_READ)],
+    schema: { tags: ["Commissions"], summary: "Get executive commission and receivables summary" },
+  }, controller.summary);
+
+  fastify.get("/receivables", {
+    preHandler: [authorize(PERMISSIONS.COMMISSIONS_READ)],
+    schema: { tags: ["Commissions"], summary: "Get receivables ledger grouped by paying party" },
+  }, controller.receivables);
+
   fastify.get("/", {
     preHandler: [authorize(PERMISSIONS.COMMISSIONS_READ)],
     schema: { tags: ["Commissions"], summary: "List commissions" },
@@ -26,6 +36,11 @@ async function commissionRoutes(fastify, opts) {
     preHandler: [authorize(PERMISSIONS.COMMISSIONS_READ)],
     schema: { tags: ["Commissions"], summary: "Get commission details by ID" },
   }, controller.getById);
+
+  fastify.post("/:id/payments", {
+    preHandler: [authorize(PERMISSIONS.COMMISSIONS_UPDATE)],
+    schema: { tags: ["Commissions"], summary: "Record payment against commission" },
+  }, controller.recordPayment);
 
   fastify.post("/", {
     preHandler: [authorize(PERMISSIONS.COMMISSIONS_CREATE)],

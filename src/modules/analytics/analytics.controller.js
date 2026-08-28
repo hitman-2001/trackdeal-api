@@ -207,6 +207,13 @@ async function downloadExport(request, reply) {
   return reply.send(fileStream);
 }
 
+async function getBrokerDashboard(request, reply) {
+  const actor = request.user;
+  const params = extractParams(request.query);
+  const data = await analyticsService.getBrokerExecutiveDashboard(params, actor);
+  return reply.send({ success: true, data });
+}
+
 module.exports = {
   getLeadAnalytics,
   getSalesAnalytics,
@@ -214,6 +221,7 @@ module.exports = {
   getTaskAnalytics,
   getExecutiveSummary,
   getAgentPerformance,
+  getBrokerDashboard,
   enqueueExport,
   getExportStatus,
   downloadExport,

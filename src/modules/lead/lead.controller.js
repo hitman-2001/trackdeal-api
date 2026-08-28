@@ -19,8 +19,16 @@ class LeadController extends BaseController {
   }
 
   async getById(request, reply) {
-    const lead = await this.leadService.getLeadById(request.params.id);
+    const lead = await this.leadService.getLeadById(request.params.id, this.getUser(request));
     return this.ok(reply, lead);
+  }
+
+  async checkDuplicate(request, reply) {
+    const result = await this.leadService.checkDuplicateLead(
+      request.query,
+      this.getUser(request)
+    );
+    return this.ok(reply, result);
   }
 
   async create(request, reply) {
@@ -175,6 +183,101 @@ class LeadController extends BaseController {
       this.getUser(request)
     );
     return this.created(reply, quotation, "Quotation recorded successfully");
+  }
+
+  async updateActivity(request, reply) {
+    const activity = await this.leadService.updateActivity(
+      request.params.id,
+      request.params.activityId,
+      request.body,
+      this.getUser(request)
+    );
+    return this.ok(reply, activity, "Activity updated successfully");
+  }
+
+  async deleteActivity(request, reply) {
+    const result = await this.leadService.deleteActivity(
+      request.params.id,
+      request.params.activityId,
+      this.getUser(request)
+    );
+    return this.ok(reply, result, "Activity deleted successfully");
+  }
+
+  async updateVisit(request, reply) {
+    const visit = await this.leadService.updateVisit(
+      request.params.id,
+      request.params.visitId,
+      request.body,
+      this.getUser(request)
+    );
+    return this.ok(reply, visit, "Visit updated successfully");
+  }
+
+  async deleteVisit(request, reply) {
+    const result = await this.leadService.deleteVisit(
+      request.params.id,
+      request.params.visitId,
+      this.getUser(request)
+    );
+    return this.ok(reply, result, "Visit deleted successfully");
+  }
+
+  async updateQuotation(request, reply) {
+    const quotation = await this.leadService.updateQuotation(
+      request.params.id,
+      request.params.quotationId,
+      request.body,
+      this.getUser(request)
+    );
+    return this.ok(reply, quotation, "Quotation updated successfully");
+  }
+
+  async deleteQuotation(request, reply) {
+    const result = await this.leadService.deleteQuotation(
+      request.params.id,
+      request.params.quotationId,
+      this.getUser(request)
+    );
+    return this.ok(reply, result, "Quotation deleted successfully");
+  }
+
+  async updateNote(request, reply) {
+    const note = await this.leadService.updateNote(
+      request.params.id,
+      request.params.noteId,
+      request.body,
+      this.getUser(request)
+    );
+    return this.ok(reply, note, "Note updated successfully");
+  }
+
+  async deleteNote(request, reply) {
+    const result = await this.leadService.deleteNote(
+      request.params.id,
+      request.params.noteId,
+      this.getUser(request)
+    );
+    return this.ok(reply, result, "Note deleted successfully");
+  }
+
+  async updateFollowUp(request, reply) {
+    const followUp = await this.leadService.updateFollowUp(
+      request.params.id,
+      request.params.followUpId,
+      request.body,
+      this.getUser(request)
+    );
+    return this.ok(reply, followUp, "Follow-up updated successfully");
+  }
+
+  async deleteFollowUp(request, reply) {
+    const result = await this.leadService.deleteFollowUp(
+      request.params.id,
+      request.params.followUpId,
+      this.getUser(request)
+    );
+    return this.ok(reply, result, "Follow-up deleted successfully");
   }
 
   async listVisits(request, reply) {

@@ -7,6 +7,7 @@ const {
   getTaskAnalytics,
   getExecutiveSummary,
   getAgentPerformance,
+  getBrokerDashboard,
   enqueueExport,
   getExportStatus,
   downloadExport,
@@ -50,6 +51,27 @@ async function analyticsRoutes(fastify) {
 
   // Shared authentication preValidation for all routes in this plugin
   const authenticateHook = [authenticate];
+
+  // ── GET /analytics/dashboard ──────────────────────────────────────────────
+  fastify.get('/dashboard', {
+    preValidation: authenticateHook,
+    schema: {
+      tags: ['Analytics'],
+      summary: 'Broker Executive Command Center Dashboard',
+      security: [{ BearerAuth: [] }],
+      querystring: dateRangeQuerySchema,
+    },
+  }, getBrokerDashboard);
+
+  fastify.get('/overview', {
+    preValidation: authenticateHook,
+    schema: {
+      tags: ['Analytics'],
+      summary: 'Broker Executive Command Center Overview',
+      security: [{ BearerAuth: [] }],
+      querystring: dateRangeQuerySchema,
+    },
+  }, getBrokerDashboard);
 
   // ── GET /analytics/leads ──────────────────────────────────────────────────
   fastify.get('/leads', {

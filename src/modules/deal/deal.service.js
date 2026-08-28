@@ -501,7 +501,7 @@ class DealService extends BaseService {
     return this.getDealById(id, actor);
   }
 
-  async transitionStage(id, newStatus, actor) {
+  async transitionStage(id, newStatus, actor, closingPayload = {}) {
     const deal = await this.getDealById(id, actor);
 
     if (['deal_closed', 'cancelled', 'token_bounced'].includes(deal.status)) {
@@ -604,7 +604,18 @@ class DealService extends BaseService {
     }
 
     if (newStatus === 'deal_closed') {
-      deal.closedAt = new Date();
+      deal.closedAt = closingPayload?.closingDate ? new Date(closingPayload.closingDate) : new Date();
+      if (closingPayload?.finalPropertyValue) {
+        deal.dealValue = Number(closingPayload.finalPropertyValue);
+        deal.agreedPrice = Number(closingPayload.finalPropertyValue);
+      }
+      try {
+        const { CommissionService } = require('../commission/commission.service');
+        const commissionService = new CommissionService();
+        await commissionService.autoCreateFromDeal(deal.id, closingPayload?.commissionInfo || closingPayload || {}, actor);
+      } catch (err) {
+        console.warn('[DealService] Auto-commission creation notice:', err.message);
+      }
     }
 
     // Compute stage transition history duration metrics

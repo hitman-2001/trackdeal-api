@@ -166,6 +166,13 @@ const PERMISSIONS = Object.freeze({
   NOTIFICATIONS_VIEW: 'notifications.view',
   NOTIFICATIONS_SEND: 'notifications.send',
 
+  // Loans
+  LOANS_CREATE: 'loans.create',
+  LOANS_READ: 'loans.read',
+  LOANS_UPDATE: 'loans.update',
+  LOANS_DELETE: 'loans.delete',
+  LOANS_MANAGE: 'loans.manage',
+
   // Tasks
   TASKS_CREATE: 'tasks.create',
   TASKS_READ: 'tasks.read',

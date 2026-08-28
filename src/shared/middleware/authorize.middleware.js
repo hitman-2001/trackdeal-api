@@ -23,17 +23,19 @@ function requirePermission(permissionKey) {
       throw new ForbiddenError('Access denied: not authenticated');
     }
 
-    // Super admin bypasses all permission restrictions
-    if (user.role === ROLES.SUPER_ADMIN) {
+    // Super admin and Org admin bypass all permission restrictions within their scope
+    if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
       return;
     }
 
     const userPermissions = user.permissions || [];
-    if (!userPermissions.includes(normalizedKey)) {
-      throw new ForbiddenError(
-        `Access denied: insufficient permissions. Required: ${permissionKey}`
-      );
+    if (userPermissions.includes('*') || userPermissions.includes(normalizedKey)) {
+      return;
     }
+
+    throw new ForbiddenError(
+      `Access denied: insufficient permissions. Required: ${permissionKey}`
+    );
   };
 }
 
@@ -53,13 +55,13 @@ function requireAnyPermission(permissionsList) {
       throw new ForbiddenError('Access denied: not authenticated');
     }
 
-    // Super admin bypass
-    if (user.role === ROLES.SUPER_ADMIN) {
+    // Super admin and Org admin bypass
+    if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
       return;
     }
 
     const userPermissions = user.permissions || [];
-    const hasAny = normalizedList.some((p) => userPermissions.includes(p));
+    const hasAny = userPermissions.includes('*') || normalizedList.some((p) => userPermissions.includes(p));
 
     if (!hasAny) {
       throw new ForbiddenError(

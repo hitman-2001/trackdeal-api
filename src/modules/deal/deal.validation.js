@@ -66,8 +66,7 @@ const uploadDocumentSchema = {
 
 const transitionStageSchema = {
   type: 'object',
-  required: ['status'],
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     status: {
       type: 'string',
@@ -88,7 +87,12 @@ const transitionStageSchema = {
         'cancelled',
       ],
     },
+    stage: { type: 'string' },
+    notes: { type: 'string' },
     cancellationReason: { type: 'string', minLength: 1, maxLength: 500 },
+    finalPropertyValue: { type: 'number' },
+    closingDate: { type: 'string' },
+    commissionDetails: { type: 'object' },
   },
 };
 

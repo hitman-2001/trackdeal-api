@@ -640,6 +640,264 @@ class AnalyticsService extends BaseService {
   }
 
   /**
+   * Comprehensive Broker CRM & Financial Command Center Dashboard
+   */
+  async getBrokerExecutiveDashboard(params = {}, actor) {
+    const orgId = actor.organizationId;
+    const { start, end } = parseDateRange(params.startDate, params.endDate);
+    const now = new Date();
+
+    const { Lead } = require("../lead/lead.model");
+    const { Property } = require("../property/property.model");
+    const { Deal } = require("../deal/deal.model");
+    const { Commission } = require("../commission/commission.model");
+    const { Task } = require("../task/task.model");
+
+    const baseFilter = { organizationId: orgId, isDeleted: false };
+    const leadFilter = { ...baseFilter };
+    const dealFilter = { ...baseFilter };
+    const taskFilter = { ...baseFilter };
+    const propFilter = { ...baseFilter };
+    const commFilter = { ...baseFilter };
+
+    if (actor.role === "agent") {
+      leadFilter.$or = [{ assignedTo: actor.id }, { agentIds: actor.id }, { createdBy: actor.id }];
+      dealFilter.$or = [{ sourcingAgent: actor.id }, { closingAgent: actor.id }, { assignedTo: actor.id }, { broker: actor.id }];
+      taskFilter.$or = [{ assignedTo: actor.id }, { createdBy: actor.id }];
+    }
+
+    // 1. Fetch live aggregate collections concurrently
+    const [
+      activeLeadsCount,
+      newLeadsPeriodCount,
+      hotLeadsCount,
+      allLeads,
+      activePropsCount,
+      allDeals,
+      allCommissions,
+      allTasks,
+      recentLeads,
+    ] = await Promise.all([
+      Lead.countDocuments({ ...leadFilter, status: { $nin: ["closed_won", "closed_lost", "lost", "junk"] } }),
+      Lead.countDocuments({ ...leadFilter, createdAt: { $gte: start, $lte: end } }),
+      Lead.countDocuments({ ...leadFilter, temperature: { $in: ["hot", "Hot", "HOT"] }, status: { $nin: ["closed_won", "closed_lost", "lost"] } }),
+      Lead.find(leadFilter).select("status temperature source budgetMin budgetMax requirements createdAt").lean(),
+      Property.countDocuments({ ...propFilter, status: { $in: ["available", "Available"] } }),
+      Deal.find(dealFilter).populate("customer", "firstName lastName name").populate("project", "name").lean(),
+      Commission.find(commFilter).populate("customerId", "firstName lastName name").populate("projectId", "name").populate("propertyId", "title").lean(),
+      Task.find({ ...taskFilter, status: { $ne: "completed" } }).populate("leadId", "firstName lastName name mobile").sort({ dueDate: 1 }).limit(20).lean(),
+      Lead.find(leadFilter).sort({ createdAt: -1 }).limit(6).populate("customerId", "firstName lastName name mobile").lean(),
+    ]);
+
+    // 2. Deals aggregation
+    let activeDealsCount = 0;
+    let activePipelineValue = 0;
+    let closedDealsPeriodCount = 0;
+    let closedDealsPeriodValue = 0;
+
+    for (const deal of allDeals) {
+      const val = Number(deal.agreedPrice || deal.dealValue || deal.askingPrice || 0);
+      if (deal.status === "deal_closed" || deal.status === "closed_won") {
+        const closedDate = deal.closedAt || deal.updatedAt;
+        if (closedDate && new Date(closedDate) >= start && new Date(closedDate) <= end) {
+          closedDealsPeriodCount++;
+          closedDealsPeriodValue += val;
+        }
+      } else if (!["cancelled", "token_bounced", "lost"].includes(deal.status)) {
+        activeDealsCount++;
+        activePipelineValue += val;
+      }
+    }
+
+    // 3. Commission aggregation
+    let totalCommissionEarned = 0;
+    let totalCommissionReceived = 0;
+    let totalCommissionOutstanding = 0;
+    let totalCommissionOverdue = 0;
+    let expectedThisMonth = 0;
+
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const upcomingCollections = [];
+
+    for (const comm of allCommissions) {
+      const expected = Number(comm.totalCommissionExpected) || 0;
+      const collected = (comm.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const outstanding = Math.max(0, expected - collected);
+      const dueDate = comm.expectedPaymentDate ? new Date(comm.expectedPaymentDate) : null;
+      const isPastDue = dueDate && dueDate < now && outstanding > 0;
+
+      totalCommissionEarned += expected;
+      totalCommissionReceived += collected;
+      totalCommissionOutstanding += outstanding;
+
+      if (isPastDue) totalCommissionOverdue += outstanding;
+
+      if (dueDate && dueDate >= startOfMonth && dueDate <= endOfMonth && outstanding > 0) {
+        expectedThisMonth += outstanding;
+      }
+
+      if (outstanding > 0) {
+        upcomingCollections.push({
+          id: comm._id,
+          commissionNumber: comm.commissionNumber || `COM-${comm._id.toString().slice(-4).toUpperCase()}`,
+          payablePartyName: comm.payablePartyName || "Developer / Builder",
+          customerName: comm.customerId?.name || `${comm.customerId?.firstName || ""} ${comm.customerId?.lastName || ""}`.trim() || "Customer",
+          projectOrProperty: comm.projectId?.name || comm.propertyId?.title || "Property Unit",
+          amount: outstanding,
+          dueDate: comm.expectedPaymentDate,
+          isPastDue,
+        });
+      }
+    }
+
+    upcomingCollections.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+
+    // 4. Sales Pipeline Stage Breakdown
+    const stageMap = {
+      new: { count: 0, value: 0 },
+      contacted: { count: 0, value: 0 },
+      qualified: { count: 0, value: 0 },
+      interested: { count: 0, value: 0 },
+      site_visit: { count: 0, value: 0 },
+      negotiation: { count: 0, value: 0 },
+      booking: { count: 0, value: 0 },
+      closed_won: { count: 0, value: 0 },
+      closed_lost: { count: 0, value: 0 },
+    };
+
+    const sourceMap = {};
+    const tempMap = { hot: 0, warm: 0, cold: 0 };
+
+    for (const lead of allLeads) {
+      let st = (lead.status || "new").toLowerCase().replace(/[\s-]+/g, "_");
+      if (st === "site_visit_scheduled" || st === "site_visit_completed") st = "site_visit";
+      if (!stageMap[st]) stageMap[st] = { count: 0, value: 0 };
+
+      const estVal = Number(lead.budgetMax || lead.budgetMin || 5000000);
+      stageMap[st].count++;
+      stageMap[st].value += estVal;
+
+      const src = lead.source || "Direct";
+      sourceMap[src] = (sourceMap[src] || 0) + 1;
+
+      const t = (lead.temperature || "warm").toLowerCase();
+      if (tempMap[t] !== undefined) tempMap[t]++;
+      else tempMap.warm++;
+    }
+
+    // 5. Follow-ups widget (Due Today vs Overdue)
+    const todayFollowups = [];
+    const overdueFollowups = [];
+    const todayStr = now.toISOString().slice(0, 10);
+
+    for (const task of allTasks) {
+      const taskDueDate = task.dueDate ? new Date(task.dueDate) : null;
+      const leadName = task.leadId ? `${task.leadId.firstName || ""} ${task.leadId.lastName || ""}`.trim() : "Direct Contact";
+
+      const formattedTask = {
+        id: task._id,
+        title: task.title || "Follow-up Call",
+        leadName,
+        type: task.type || "Call",
+        dueDate: task.dueDate,
+        dueTime: task.dueTime || "11:00 AM",
+        priority: task.priority || "medium",
+        status: task.status,
+      };
+
+      if (taskDueDate) {
+        const taskDateStr = taskDueDate.toISOString().slice(0, 10);
+        if (taskDateStr === todayStr) {
+          todayFollowups.push(formattedTask);
+        } else if (taskDueDate < now) {
+          overdueFollowups.push(formattedTask);
+        }
+      }
+    }
+
+    // 6. Monthly Performance Trends (Last 6 Months)
+    const monthlySeries = [];
+    for (let i = 5; i >= 0; i--) {
+      const mDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+      const monthLabel = mDate.toLocaleString("default", { month: "short" });
+
+      let monthDealVal = 0;
+      let monthEarned = 0;
+      let monthReceived = 0;
+
+      for (const d of allDeals) {
+        const cd = d.closedAt || (d.status === "deal_closed" ? d.updatedAt : null);
+        if (cd && new Date(cd) >= mDate && new Date(cd) <= mEnd) {
+          monthDealVal += Number(d.agreedPrice || d.dealValue || d.askingPrice || 0);
+        }
+      }
+
+      for (const comm of allCommissions) {
+        if (comm.createdAt && new Date(comm.createdAt) >= mDate && new Date(comm.createdAt) <= mEnd) {
+          monthEarned += Number(comm.totalCommissionExpected || 0);
+        }
+        for (const p of comm.payments || []) {
+          if (p.paymentDate && new Date(p.paymentDate) >= mDate && new Date(p.paymentDate) <= mEnd) {
+            monthReceived += Number(p.amount || 0);
+          }
+        }
+      }
+
+      monthlySeries.push({
+        month: monthLabel,
+        dealValue: monthDealVal,
+        commissionEarned: monthEarned,
+        commissionReceived: monthReceived,
+      });
+    }
+
+    const collectionRate = totalCommissionEarned > 0 ? Number(((totalCommissionReceived / totalCommissionEarned) * 100).toFixed(1)) : 0;
+
+    return {
+      period: { startDate: start, endDate: end },
+      kpis: {
+        activeLeads: activeLeadsCount,
+        newLeadsThisMonth: newLeadsPeriodCount,
+        hotLeads: hotLeadsCount,
+        activeProperties: activePropsCount,
+        activeDeals: activeDealsCount,
+        activePipelineValue,
+        closedDealsPeriodCount,
+        closedDealsPeriodValue,
+        commissionReceivable: totalCommissionOutstanding,
+        commissionReceived: totalCommissionReceived,
+        commissionEarned: totalCommissionEarned,
+        commissionOverdue: totalCommissionOverdue,
+        expectedThisMonth,
+        collectionRate,
+        followupsDueTodayCount: todayFollowups.length,
+        overdueFollowupsCount: overdueFollowups.length,
+        siteVisitsScheduledCount: stageMap.site_visit?.count || 0,
+      },
+      salesPipeline: stageMap,
+      leadSources: sourceMap,
+      leadTemperatures: tempMap,
+      todayFollowups,
+      overdueFollowups,
+      expectedCollections: upcomingCollections.slice(0, 5),
+      monthlyPerformance: monthlySeries,
+      recentLeads: recentLeads.map((l) => ({
+        id: l._id,
+        name: `${l.firstName || ""} ${l.lastName || ""}`.trim() || "Customer",
+        source: l.source || "Website",
+        temperature: l.temperature || "warm",
+        stage: l.status || "new",
+        requirement: l.requirements?.propertyType || l.propertyType || "Residential",
+        budget: l.budgetMax || l.budgetMin || 0,
+        createdAt: l.createdAt,
+      })),
+    };
+  }
+
+  /**
    * Return agent performance metrics for a given agent or all agents in scope.
    *
    * @param {object} params — { startDate?, endDate?, agentId?, branchId? }

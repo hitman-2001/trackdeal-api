@@ -53,6 +53,16 @@ class AuthService extends BaseService {
 
     // 2. Establish tenant execution context to safely perform updates and writes
     return tenantContext.run({ organizationId: user.organizationId, branchId: user.branchId }, async () => {
+      if (user.organizationId) {
+        const { Organization } = require('../organization/organization.model');
+        const org = await tenantContext.run({ isSystemOverride: true }, () =>
+          Organization.findById(user.organizationId).lean()
+        );
+        if (org && org.status === 'suspended') {
+          throw new ForbiddenError('Your organization has been suspended. Please contact TrackDeal support.');
+        }
+      }
+
       // Brute-force Lockout Check
       if (user.lockoutUntil && user.lockoutUntil > new Date()) {
         const remainingMinutes = Math.ceil((user.lockoutUntil - new Date()) / 1000 / 60);
@@ -121,6 +131,9 @@ class AuthService extends BaseService {
       });
 
       const sanitizedUser = this._sanitizeUser(user);
+      sanitizedUser.role = tokenPayload.role;
+      sanitizedUser.permissions = tokenPayload.permissions;
+      sanitizedUser.organizationType = tokenPayload.organizationType;
       sanitizedUser.forcePasswordChange = !!user.forcePasswordChange;
 
       return {
@@ -382,10 +395,13 @@ class AuthService extends BaseService {
   }
 
   async _buildTokenPayload(user) {
-    let roleDoc = user.role;
-    if (roleDoc && (typeof roleDoc === 'string' || roleDoc instanceof require('mongoose').Types.ObjectId)) {
+    let roleRef = user.roleId || user.role;
+    let roleDoc = null;
+    if (roleRef && (typeof roleRef === 'string' || roleRef instanceof require('mongoose').Types.ObjectId)) {
       const RoleModel = require('mongoose').model('Role');
-      roleDoc = await tenantContext.run({ isSystemOverride: true }, () => RoleModel.findById(roleDoc));
+      roleDoc = await tenantContext.run({ isSystemOverride: true }, () => RoleModel.findById(roleRef));
+    } else if (roleRef && typeof roleRef === 'object' && roleRef.code) {
+      roleDoc = roleRef;
     }
 
     const roleName = roleDoc?.code || roleDoc?.name || 'guest';

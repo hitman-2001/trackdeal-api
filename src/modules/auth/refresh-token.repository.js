@@ -11,6 +11,7 @@ const { BaseRepository } = require('../../shared/base/BaseRepository');
 class RefreshTokenRepository extends BaseRepository {
   constructor() {
     super(RefreshToken);
+    this.isTenantScoped = false;
   }
 
   /**

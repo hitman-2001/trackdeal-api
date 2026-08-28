@@ -19,7 +19,8 @@ const userSchema = new mongoose.Schema(
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
-      required: true,
+      required: false,
+      default: null,
       index: true,
     },
     branchId: {

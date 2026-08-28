@@ -10,49 +10,40 @@ class CommissionController extends BaseController {
   }
 
   async list(request, reply) {
-    const query = request.query;
-    const actor = this.getUser(request);
-    const pagination = this.getPagination(query);
+    const result = await this.commissionService.getCommissionsList(
+      request.query,
+      this.getUser(request),
+    );
+    return reply.send({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  }
 
-    const filter = { organizationId: actor.organizationId, isDeleted: false };
+  async summary(request, reply) {
+    const summary = await this.commissionService.getCommissionSummary(
+      request.query,
+      this.getUser(request),
+    );
+    return this.ok(reply, summary);
+  }
 
-    if (actor.role === "agent") {
-      const deals = await this.commissionService.dealRepository.model.find({
-        $or: [
-          { sourcingAgent: actor.id },
-          { closingAgent: actor.id },
-          { teamLeader: actor.id },
-          { assignedTo: actor.id },
-          { broker: actor.id },
-        ],
-        organizationId: actor.organizationId,
-      }).select("_id");
-      const dealIds = deals.map((d) => d._id);
-      filter.dealId = { $in: dealIds };
-    }
+  async receivables(request, reply) {
+    const ledger = await this.commissionService.getReceivablesLedger(
+      request.query,
+      this.getUser(request),
+    );
+    return this.ok(reply, ledger);
+  }
 
-    const { data, pagination: pageInfo } =
-      await this.commissionService.commissionRepository.paginate(
-        filter,
-        {
-          ...pagination,
-          populate: [{ path: "dealId", select: "dealNumber status sourcingAgent closingAgent teamLeader broker assignedTo" }],
-        },
-      );
-
-    if (actor.role === "agent") {
-      const sanitizedData = data.map((item) => {
-        const doc = item.toObject ? item.toObject() : item;
-        delete doc.totalCommissionExpected;
-        delete doc.totalCommissionCollected;
-        delete doc.totalCommissionOutstanding;
-        delete doc.commissionPercentage;
-        return doc;
-      });
-      return this.paginated(reply, sanitizedData, pageInfo);
-    }
-
-    return this.paginated(reply, data, pageInfo);
+  async recordPayment(request, reply) {
+    const commission = await this.commissionService.recordPayment(
+      request.params.id,
+      request.body,
+      this.getUser(request),
+    );
+    return this.ok(reply, commission);
   }
 
   async getById(request, reply) {

@@ -10,63 +10,63 @@ const controller = new AgreementController();
 async function agreementRoutes(fastify, opts) {
   fastify.addHook('preValidation', authenticate);
 
-  // Templates
+  // Template routes
   fastify.get('/templates', {
-    preHandler: [authorize(PERMISSIONS.AGREEMENTS_VIEW)],
-    schema: {
-      tags: ['Agreement Templates'],
-      summary: 'List agreement templates',
-    },
+    schema: { tags: ['Agreement Templates'], summary: 'List available agreement templates' },
   }, controller.listTemplates);
 
+  fastify.get('/templates/:id', {
+    schema: { tags: ['Agreement Templates'], summary: 'Get agreement template by ID' },
+  }, controller.getTemplateById);
+
   fastify.post('/templates', {
-    preHandler: [authorize(PERMISSIONS.AGREEMENTS_CREATE)],
-    schema: {
-      tags: ['Agreement Templates'],
-      summary: 'Create a new agreement template',
-    },
+    schema: { tags: ['Agreement Templates'], summary: 'Create custom agreement template' },
   }, controller.createTemplate);
 
-  // Agreements
+  // Agreement routes
   fastify.get('/', {
-    preHandler: [authorize(PERMISSIONS.AGREEMENTS_VIEW)],
-    schema: {
-      tags: ['Agreements'],
-      summary: 'List generated agreements',
-    },
+    schema: { tags: ['Agreements'], summary: 'List agreements with summary KPIs' },
   }, controller.list);
 
   fastify.get('/:id', {
-    preHandler: [authorize(PERMISSIONS.AGREEMENTS_VIEW)],
-    schema: {
-      tags: ['Agreements'],
-      summary: 'Get agreement by ID',
-    },
+    schema: { tags: ['Agreements'], summary: 'Get agreement by ID' },
   }, controller.getById);
 
-  fastify.post('/generate', {
-    preHandler: [authorize(PERMISSIONS.AGREEMENTS_CREATE)],
-    schema: {
-      tags: ['Agreements'],
-      summary: 'Generate an agreement from template & deal context',
-    },
-  }, controller.generate);
+  fastify.post('/', {
+    schema: { tags: ['Agreements'], summary: 'Create agreement from guided wizard' },
+  }, controller.create);
 
-  fastify.post('/:id/sign', {
-    preHandler: [authorize(PERMISSIONS.AGREEMENTS_CREATE)],
-    schema: {
-      tags: ['Agreements'],
-      summary: 'Sign agreement contract',
-    },
-  }, controller.sign);
+  fastify.put('/:id/details', {
+    schema: { tags: ['Agreements'], summary: 'Edit structured transaction fields and recompile' },
+  }, controller.updateStructuredDetails);
 
-  fastify.post('/:id/void', {
-    preHandler: [authorize(PERMISSIONS.AGREEMENTS_CREATE)],
-    schema: {
-      tags: ['Agreements'],
-      summary: 'Void agreement contract',
-    },
-  }, controller.void);
+  fastify.put('/:id/clauses', {
+    schema: { tags: ['Agreements'], summary: 'Full document editor: update clauses & order' },
+  }, controller.updateClauses);
+
+  fastify.post('/:id/custom-clause', {
+    schema: { tags: ['Agreements'], summary: 'Insert custom clause into agreement' },
+  }, controller.addCustomClause);
+
+  fastify.post('/:id/reset-clause/:clauseId', {
+    schema: { tags: ['Agreements'], summary: 'Reset single clause to master template' },
+  }, controller.resetClause);
+
+  fastify.post('/:id/reset-all', {
+    schema: { tags: ['Agreements'], summary: 'Reset all clauses to master template' },
+  }, controller.resetFullAgreement);
+
+  fastify.post('/:id/duplicate', {
+    schema: { tags: ['Agreements'], summary: 'Duplicate agreement' },
+  }, controller.duplicate);
+
+  fastify.patch('/:id/status', {
+    schema: { tags: ['Agreements'], summary: 'Update agreement status' },
+  }, controller.updateStatus);
+
+  fastify.get('/:id/docx', {
+    schema: { tags: ['Agreements'], summary: 'Export agreement as Word document' },
+  }, controller.exportDocx);
 }
 
 module.exports = agreementRoutes;

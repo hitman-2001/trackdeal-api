@@ -11,11 +11,12 @@ const { AUDIT_ACTIONS } = require('../../shared/constants/app.constants');
 
 const auditLogSchema = new mongoose.Schema(
   {
-    // SaaS Boundaries
+    // SaaS Boundaries (Optional for Platform System Administrator logs)
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
-      required: true,
+      required: false,
+      default: null,
       index: true,
     },
     branchId: {
@@ -27,7 +28,6 @@ const auditLogSchema = new mongoose.Schema(
     // What action was performed
     action: {
       type: String,
-      enum: Object.values(AUDIT_ACTIONS),
       required: true,
       index: true,
     },

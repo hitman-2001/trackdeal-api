@@ -27,6 +27,7 @@ const branchRoutes = require('../modules/branch/branch.routes');
 const taskRoutes = require('../modules/task/task.routes');
 const projectRoutes = require('../modules/project/project.routes');
 const commissionRoutes = require('../modules/commission/commission.routes');
+const loanRoutes = require('../modules/loan/loan.routes');
 const agentRoutes = require('../modules/agent/agent.routes');
 
 // Imported modules
@@ -80,6 +81,7 @@ async function registerRoutes(fastify, opts) {
   fastify.register(taskRoutes, { prefix: '/tasks' });
   fastify.register(projectRoutes, { prefix: '/projects' });
   fastify.register(commissionRoutes, { prefix: '/commissions' });
+  fastify.register(loanRoutes, { prefix: '/loans' });
   fastify.register(agentRoutes, { prefix: '/agents' });
 
   // Active module routes
@@ -91,6 +93,10 @@ async function registerRoutes(fastify, opts) {
 
   // Analytics & Reporting
   fastify.register(analyticsRoutes, { prefix: '/analytics' });
+
+  // Dedicated Platform System Administrator routes
+  const adminRoutes = require('../modules/admin/admin.routes');
+  fastify.register(adminRoutes, { prefix: '/admin' });
 }
 
 module.exports = { registerRoutes };

@@ -44,18 +44,24 @@ class CommissionService extends BaseService {
   }
 
   async getCommissionById(id, actor) {
-    const commission = await this.commissionRepository.findByIdOrFail(
-      id,
-      "Commission",
-    );
-    if (
-      commission.organizationId.toString() !== actor.organizationId.toString()
-    ) {
+    const commission = await this.commissionRepository.model
+      .findById(id)
+      .populate("dealId", "dealNumber dealValue agreedPrice askingPrice status customer project property unit sourcingAgent closingAgent")
+      .populate("customerId", "firstName lastName name email mobile phone")
+      .populate("projectId", "name code location city")
+      .populate("propertyId", "title propertyType configuration location")
+      .populate("payments.recordedBy", "firstName lastName email")
+      .lean();
+
+    if (!commission || commission.isDeleted) {
+      throw new NotFoundError("Commission", id);
+    }
+    if (commission.organizationId.toString() !== actor.organizationId.toString()) {
       throw new ForbiddenError("Access to this commission is prohibited.");
     }
     // Strict agent visibility boundary
     if (actor.role === "agent") {
-      const deal = await this.dealRepository.model.findById(commission.dealId);
+      const deal = commission.dealId;
       const isParticipant =
         deal &&
         (deal.sourcingAgent?.toString() === actor.id.toString() ||
@@ -70,82 +76,521 @@ class CommissionService extends BaseService {
     return commission;
   }
 
-  async createCommission(data, actor) {
-    const organizationId = actor.organizationId;
+  /**
+   * 1. Executive Commission & Receivables Summary Metrics
+   */
+  async getCommissionSummary(query = {}, actor) {
+    const orgId = actor.organizationId;
+    const filter = { organizationId: orgId, isDeleted: false };
 
-    // Validate Deal exists under organization boundaries
-    const deal = await this.dealRepository.findByIdOrFail(data.dealId, "Deal");
-    if (deal.organizationId.toString() !== organizationId.toString()) {
-      throw new ForbiddenError("Deal belongs to a different organization.");
+    if (actor.role === "agent") {
+      const { Deal } = require("../deal/deal.model");
+      const userDeals = await Deal.find({
+        organizationId: orgId,
+        $or: [
+          { sourcingAgent: actor.id },
+          { closingAgent: actor.id },
+          { assignedTo: actor.id },
+          { broker: actor.id },
+        ],
+      }).select("_id");
+      filter.dealId = { $in: userDeals.map((d) => d._id) };
     }
 
-    // Prevent duplicate active parent commission profiles
-    const existing = await this.commissionRepository.findOne({
-      dealId: data.dealId,
+    const commissions = await this.commissionRepository.model
+      .find(filter)
+      .populate("customerId", "firstName lastName name")
+      .populate("projectId", "name")
+      .populate("propertyId", "title")
+      .lean();
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    let totalEarned = 0;
+    let totalCollected = 0;
+    let totalOutstanding = 0;
+    let totalOverdue = 0;
+    let expectedThisMonth = 0;
+    let fullyPaidCount = 0;
+    let partiallyPaidCount = 0;
+    let unpaidCount = 0;
+    let overdueCount = 0;
+
+    const aging = {
+      notDue: 0,
+      days1to30: 0,
+      days31to60: 0,
+      days61to90: 0,
+      days90Plus: 0,
+    };
+
+    const upcomingCollections = [];
+
+    for (const comm of commissions) {
+      const expected = Number(comm.totalCommissionExpected) || 0;
+      const collected = (comm.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const outstanding = Math.max(0, expected - collected);
+      const dueDate = comm.expectedPaymentDate ? new Date(comm.expectedPaymentDate) : null;
+      const isPastDue = dueDate && dueDate < now && outstanding > 0;
+
+      totalEarned += expected;
+      totalCollected += collected;
+      totalOutstanding += outstanding;
+
+      if (isPastDue) {
+        totalOverdue += outstanding;
+        overdueCount++;
+      }
+
+      if (dueDate && dueDate >= startOfMonth && dueDate <= endOfMonth && outstanding > 0) {
+        expectedThisMonth += outstanding;
+      }
+
+      if (collected >= expected && expected > 0) {
+        fullyPaidCount++;
+      } else if (collected > 0) {
+        partiallyPaidCount++;
+      } else {
+        unpaidCount++;
+      }
+
+      // Aging calculation
+      if (outstanding > 0) {
+        if (!dueDate || dueDate >= now) {
+          aging.notDue += outstanding;
+        } else {
+          const diffDays = Math.floor((now - dueDate) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 30) aging.days1to30 += outstanding;
+          else if (diffDays <= 60) aging.days31to60 += outstanding;
+          else if (diffDays <= 90) aging.days61to90 += outstanding;
+          else aging.days90Plus += outstanding;
+        }
+
+        if (dueDate && dueDate >= now) {
+          upcomingCollections.push({
+            id: comm._id,
+            commissionNumber: comm.commissionNumber,
+            payablePartyName: comm.payablePartyName || "Builder / Seller",
+            payablePartyType: comm.payablePartyType || "builder",
+            customerName: comm.customerId?.name || `${comm.customerId?.firstName || ""} ${comm.customerId?.lastName || ""}`.trim() || "Customer",
+            projectName: comm.projectId?.name || comm.propertyId?.title || "Property",
+            amount: outstanding,
+            dueDate: comm.expectedPaymentDate,
+          });
+        }
+      }
+    }
+
+    upcomingCollections.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
+    const collectionRate = totalEarned > 0 ? Number(((totalCollected / totalEarned) * 100).toFixed(1)) : 0;
+
+    return {
+      totalEarned,
+      totalCollected,
+      totalOutstanding,
+      totalOverdue,
+      expectedThisMonth,
+      fullyPaidCount,
+      partiallyPaidCount,
+      unpaidCount,
+      overdueCount,
+      totalDeals: commissions.length,
+      collectionRate,
+      aging,
+      upcomingCollections: upcomingCollections.slice(0, 6),
+    };
+  }
+
+  /**
+   * 2. Filterable Commissions List
+   */
+  async getCommissionsList(query = {}, actor) {
+    const orgId = actor.organizationId;
+    const page = Math.max(1, parseInt(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 15));
+    const skip = (page - 1) * limit;
+
+    const filter = { organizationId: orgId, isDeleted: false };
+
+    if (actor.role === "agent") {
+      const { Deal } = require("../deal/deal.model");
+      const userDeals = await Deal.find({
+        organizationId: orgId,
+        $or: [
+          { sourcingAgent: actor.id },
+          { closingAgent: actor.id },
+          { assignedTo: actor.id },
+          { broker: actor.id },
+        ],
+      }).select("_id");
+      filter.dealId = { $in: userDeals.map((d) => d._id) };
+    }
+
+    if (query.paymentStatus) {
+      filter.paymentStatus = query.paymentStatus.toLowerCase();
+    }
+    if (query.payablePartyType) {
+      filter.payablePartyType = query.payablePartyType;
+    }
+    if (query.search) {
+      const regex = new RegExp(query.search.trim(), "i");
+      filter.$or = [
+        { commissionNumber: regex },
+        { payablePartyName: regex },
+        { unitNumber: regex },
+        { paymentTerms: regex },
+      ];
+    }
+
+    const [total, items] = await Promise.all([
+      this.commissionRepository.model.countDocuments(filter),
+      this.commissionRepository.model
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("dealId", "dealNumber dealValue agreedPrice status")
+        .populate("customerId", "firstName lastName name email mobile phone")
+        .populate("projectId", "name location city")
+        .populate("propertyId", "title propertyType configuration")
+        .lean(),
+    ]);
+
+    // Recalculate dynamic payment status & balances for presentation
+    const now = new Date();
+    const formatted = items.map((comm) => {
+      const expected = Number(comm.totalCommissionExpected) || 0;
+      const collected = (comm.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const outstanding = Math.max(0, expected - collected);
+      const dueDate = comm.expectedPaymentDate ? new Date(comm.expectedPaymentDate) : null;
+
+      let paymentStatus = "unpaid";
+      if (collected >= expected && expected > 0) {
+        paymentStatus = "fully_paid";
+      } else if (collected > 0) {
+        paymentStatus = dueDate && dueDate < now && outstanding > 0 ? "overdue" : "partially_paid";
+      } else {
+        paymentStatus = dueDate && dueDate < now && outstanding > 0 ? "overdue" : "unpaid";
+      }
+
+      return {
+        ...comm,
+        totalCommissionCollected: collected,
+        totalCommissionOutstanding: outstanding,
+        paymentStatus,
+        lastPayment: comm.payments && comm.payments.length > 0 ? comm.payments[comm.payments.length - 1] : null,
+      };
+    });
+
+    return {
+      data: formatted,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  /**
+   * 3. Record Payment against a Commission
+   */
+  async recordPayment(commissionId, paymentData, actor) {
+    const commission = await this.commissionRepository.model.findById(commissionId);
+    if (!commission || commission.isDeleted) {
+      throw new NotFoundError("Commission", commissionId);
+    }
+    if (commission.organizationId.toString() !== actor.organizationId.toString()) {
+      throw new ForbiddenError("Access denied.");
+    }
+
+    const amount = Number(paymentData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      throw new BusinessRuleError("Payment amount must be greater than zero.", "INVALID_AMOUNT");
+    }
+
+    const newPayment = {
+      paymentDate: paymentData.paymentDate ? new Date(paymentData.paymentDate) : new Date(),
+      amount,
+      paymentMethod: paymentData.paymentMethod || "Bank Transfer",
+      referenceNumber: paymentData.referenceNumber || paymentData.transactionRef || "",
+      receivedFrom: paymentData.receivedFrom || commission.payablePartyName || "",
+      bankAccount: paymentData.bankAccount || "",
+      tdsDeducted: !!paymentData.tdsDeducted,
+      tdsAmount: Number(paymentData.tdsAmount) || 0,
+      notes: paymentData.notes || "",
+      receiptUrl: paymentData.receiptUrl || "",
+      recordedBy: actor.id,
+    };
+
+    commission.payments = commission.payments || [];
+    commission.payments.push(newPayment);
+
+    // Recalculate totals
+    const totalCollected = commission.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    commission.totalCommissionCollected = totalCollected;
+    commission.totalCommissionOutstanding = Math.max(0, (commission.totalCommissionExpected || 0) - totalCollected);
+
+    const now = new Date();
+    if (commission.totalCommissionCollected >= commission.totalCommissionExpected && commission.totalCommissionExpected > 0) {
+      commission.paymentStatus = "fully_paid";
+      commission.status = "fully_collected";
+    } else if (commission.totalCommissionCollected > 0) {
+      if (commission.expectedPaymentDate && new Date(commission.expectedPaymentDate) < now && commission.totalCommissionOutstanding > 0) {
+        commission.paymentStatus = "overdue";
+      } else {
+        commission.paymentStatus = "partially_paid";
+      }
+      commission.status = "partially_collected";
+    }
+
+    await commission.save();
+
+    await this.logAudit({
+      action: AUDIT_ACTIONS.PAYMENT || "PAYMENT_RECORDED",
+      entity: "Commission",
+      entityId: commission._id,
+      userId: actor.id,
+      description: `Recorded payment of ₹${amount} (${newPayment.paymentMethod}) for Commission ${commission.commissionNumber || commission._id}`,
+    });
+
+    return this.getCommissionById(commissionId, actor);
+  }
+
+  /**
+   * 4. Automatic Commission Creation from Deal Closure
+   */
+  async autoCreateFromDeal(dealId, commissionData = {}, actor) {
+    const { Deal } = require("../deal/deal.model");
+    const deal = await Deal.findById(dealId)
+      .populate("customer")
+      .populate("project")
+      .populate("property");
+
+    if (!deal) throw new NotFoundError("Deal", dealId);
+
+    const finalDealValue = Number(deal.agreedPrice || deal.dealValue || deal.askingPrice || 0);
+    const commissionRate = Number(commissionData.commissionRate || deal.commissionPercentage || 2);
+    const commissionType = commissionData.commissionType || "percentage";
+    
+    let expectedAmount = 0;
+    if (commissionType === "percentage" || commissionType === "Percentage") {
+      expectedAmount = Number(commissionData.expectedAmount) || (finalDealValue * (commissionRate / 100));
+    } else {
+      expectedAmount = Number(commissionData.expectedAmount) || (deal.commissionAmount || 0);
+    }
+
+    let payablePartyType = commissionData.payablePartyType || "builder";
+    let payablePartyName = commissionData.payablePartyName || (deal.project?.builderName || deal.project?.name || "Developer");
+
+    // Upsert or create Commission record
+    let commission = await this.commissionRepository.model.findOne({ dealId, isDeleted: false });
+    if (!commission) {
+      commission = new this.commissionRepository.model({
+        dealId,
+        organizationId: actor.organizationId,
+        branchId: deal.branchId || null,
+        customerId: deal.customer?._id || deal.customer,
+        propertyId: deal.property?._id || deal.property || null,
+        projectId: deal.project?._id || deal.project || null,
+        unitNumber: deal.unit?.unitNumber || commissionData.unitNumber || "",
+        payablePartyType,
+        payablePartyName,
+        payablePartyId: commissionData.payablePartyId || null,
+        commissionType,
+        commissionRate,
+        finalDealValue,
+        expectedPaymentDate: commissionData.expectedPaymentDate ? new Date(commissionData.expectedPaymentDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        totalCommissionExpected: expectedAmount,
+        totalCommissionCollected: 0,
+        totalCommissionOutstanding: expectedAmount,
+        tdsPercentage: Number(commissionData.tdsPercentage) || 5,
+        paymentTerms: commissionData.paymentTerms || "Standard Net 30 Days",
+        remarks: commissionData.remarks || "",
+        createdBy: actor.id,
+      });
+
+      // Default Milestones (Booking 30%, Agreement 30%, Registration 30%, Possession 10%)
+      commission.milestones = [
+        { milestoneName: "Booking Confirmation", expectedAmount: expectedAmount * 0.3, expectedDate: new Date(Date.now() + 7 * 86400000), status: "upcoming" },
+        { milestoneName: "Agreement Execution", expectedAmount: expectedAmount * 0.3, expectedDate: new Date(Date.now() + 30 * 86400000), status: "upcoming" },
+        { milestoneName: "Registration", expectedAmount: expectedAmount * 0.3, expectedDate: new Date(Date.now() + 60 * 86400000), status: "upcoming" },
+        { milestoneName: "Handover / Possession", expectedAmount: expectedAmount * 0.1, expectedDate: new Date(Date.now() + 90 * 86400000), status: "upcoming" },
+      ];
+    } else {
+      commission.finalDealValue = finalDealValue;
+      commission.totalCommissionExpected = expectedAmount;
+      commission.commissionRate = commissionRate;
+      commission.payablePartyType = payablePartyType;
+      commission.payablePartyName = payablePartyName;
+      if (commissionData.expectedPaymentDate) {
+        commission.expectedPaymentDate = new Date(commissionData.expectedPaymentDate);
+      }
+    }
+
+    await commission.save();
+    return commission;
+  }
+
+  /**
+   * 4b. Automatic Commission Creation from Loan Disbursement
+   */
+  async autoCreateFromLoan(loanCaseId, commissionData = {}, actor) {
+    const { LoanCase } = require("../loan/loan-case.model");
+    const loanCase = await LoanCase.findById(loanCaseId)
+      .populate("customerId")
+      .populate("propertyId")
+      .populate("dealId");
+
+    if (!loanCase) throw new NotFoundError("LoanCase", loanCaseId);
+
+    const totalDisbursed = Number(loanCase.disbursedAmount || loanCase.sanctionedAmount || loanCase.requiredAmount || 0);
+    const commissionRate = Number(commissionData.commissionRate || loanCase.commissionTerms?.commissionRate || 0.5);
+    const expectedAmount = Number(commissionData.expectedAmount) || Math.round((totalDisbursed * commissionRate) / 100);
+
+    const payablePartyType = commissionData.payablePartyType || loanCase.commissionTerms?.payablePartyType || "bank";
+    const payablePartyName = commissionData.payablePartyName || loanCase.sanctionDetails?.bankName || loanCase.preferredBank || "Bank / DSA";
+
+    let commission = await this.commissionRepository.model.findOne({
+      loanCaseId: loanCase._id,
+      organizationId: actor.organizationId,
       isDeleted: false,
     });
-    if (existing) {
-      throw new BusinessRuleError(
-        "An active commission profile already exists for this deal.",
-        "COMMISSION_EXISTS",
-      );
+
+    if (!commission) {
+      const count = await this.commissionRepository.model.countDocuments({ organizationId: actor.organizationId });
+      const year = new Date().getFullYear();
+      const commissionNumber = `COM-${year}-${String(count + 1).padStart(4, "0")}`;
+
+      commission = new this.commissionRepository.model({
+        commissionNumber,
+        sourceType: "LOAN",
+        loanCaseId: loanCase._id,
+        dealId: loanCase.dealId?._id || null,
+        organizationId: actor.organizationId,
+        branchId: loanCase.branchId || null,
+        customerId: loanCase.customerId?._id || null,
+        propertyId: loanCase.propertyId?._id || null,
+        unitNumber: loanCase.propertyId?.title || "",
+        payablePartyType,
+        payablePartyName,
+        commissionType: "percentage",
+        commissionRate,
+        finalDealValue: totalDisbursed,
+        totalCommissionExpected: expectedAmount,
+        totalCommissionCollected: 0,
+        totalCommissionOutstanding: expectedAmount,
+        paymentStatus: "unpaid",
+        status: "eligible",
+        expectedPaymentDate: commissionData.expectedPaymentDate ? new Date(commissionData.expectedPaymentDate) : new Date(Date.now() + 30 * 86400000),
+        tdsPercentage: Number(commissionData.tdsPercentage || 5),
+        milestones: [
+          {
+            milestoneName: "Loan Disbursement Settlement",
+            expectedAmount,
+            expectedDate: new Date(Date.now() + 30 * 86400000),
+            status: "upcoming",
+          },
+        ],
+      });
+    } else {
+      commission.finalDealValue = totalDisbursed;
+      commission.totalCommissionExpected = expectedAmount;
+      commission.totalCommissionOutstanding = Math.max(0, expectedAmount - (commission.totalCommissionCollected || 0));
+      commission.commissionRate = commissionRate;
+      commission.payablePartyType = payablePartyType;
+      commission.payablePartyName = payablePartyName;
     }
 
-    const commission = await this.commissionRepository.create({
-      dealId: data.dealId,
-      organizationId,
-      branchId: deal.branchId,
-      totalCommissionExpected: data.totalCommissionExpected,
-      commissionPercentage: data.commissionPercentage || 3,
-      totalCommissionCollected: 0,
-      totalCommissionOutstanding: data.totalCommissionExpected,
-      status: "eligible",
-      notes: data.notes,
-    });
+    await commission.save();
+    return commission;
+  }
 
-    // Auto-seed the 4 default RERA-standard milestones (30%, 30%, 30%, 10%)
-    const milestones = [
-      { name: "Agreement Executed", pct: 30, num: 1 },
-      { name: "Plinth Construction Slabs", pct: 30, num: 2 },
-      { name: "Registration Completed", pct: 30, num: 3 },
-      { name: "Handover & Possession", pct: 10, num: 4 },
-    ];
+  /**
+   * 5. Receivables Ledger: Grouped by Paying Party with Aging
+   */
+  async getReceivablesLedger(query = {}, actor) {
+    const orgId = actor.organizationId;
+    const filter = { organizationId: orgId, isDeleted: false, totalCommissionOutstanding: { $gt: 0 } };
 
-    for (const m of milestones) {
-      const grossAmount = commission.totalCommissionExpected * (m.pct / 100);
-      await this.commissionSlabRepository.create({
-        commissionId: commission.id,
-        organizationId,
-        slabNumber: m.num,
-        milestoneName: m.name,
-        percentage: m.pct,
-        grossAmount,
-        balanceOutstanding: grossAmount,
-        status: "locked",
+    if (actor.role === "agent") {
+      const { Deal } = require("../deal/deal.model");
+      const userDeals = await Deal.find({
+        organizationId: orgId,
+        $or: [
+          { sourcingAgent: actor.id },
+          { closingAgent: actor.id },
+          { assignedTo: actor.id },
+          { broker: actor.id },
+        ],
+      }).select("_id");
+      filter.dealId = { $in: userDeals.map((d) => d._id) };
+    }
+
+    const items = await this.commissionRepository.model
+      .find(filter)
+      .populate("dealId", "dealNumber dealValue agreedPrice status")
+      .populate("customerId", "firstName lastName name email mobile")
+      .populate("projectId", "name location")
+      .populate("propertyId", "title")
+      .sort({ expectedPaymentDate: 1 })
+      .lean();
+
+    const now = new Date();
+    // Group by paying party
+    const partyMap = {};
+
+    for (const comm of items) {
+      const partyKey = comm.payablePartyName || "Builder / Developer";
+      if (!partyMap[partyKey]) {
+        partyMap[partyKey] = {
+          payablePartyName: partyKey,
+          payablePartyType: comm.payablePartyType || "builder",
+          totalExpected: 0,
+          totalCollected: 0,
+          totalOutstanding: 0,
+          totalOverdue: 0,
+          dealsCount: 0,
+          deals: [],
+        };
+      }
+
+      const expected = Number(comm.totalCommissionExpected) || 0;
+      const collected = (comm.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const outstanding = Math.max(0, expected - collected);
+      const dueDate = comm.expectedPaymentDate ? new Date(comm.expectedPaymentDate) : null;
+      const isPastDue = dueDate && dueDate < now;
+
+      partyMap[partyKey].totalExpected += expected;
+      partyMap[partyKey].totalCollected += collected;
+      partyMap[partyKey].totalOutstanding += outstanding;
+      if (isPastDue) partyMap[partyKey].totalOverdue += outstanding;
+      partyMap[partyKey].dealsCount++;
+
+      partyMap[partyKey].deals.push({
+        id: comm._id,
+        commissionNumber: comm.commissionNumber,
+        customerName: comm.customerId?.name || `${comm.customerId?.firstName || ""} ${comm.customerId?.lastName || ""}`.trim(),
+        projectOrProperty: comm.projectId?.name || comm.propertyId?.title || "Property Unit",
+        dealValue: comm.finalDealValue || comm.dealId?.dealValue || 0,
+        expected,
+        collected,
+        outstanding,
+        dueDate: comm.expectedPaymentDate,
+        isPastDue,
+        paymentStatus: isPastDue ? "overdue" : (collected > 0 ? "partially_paid" : "unpaid"),
       });
     }
 
-    // Log initial eligible stage history
-    await this.commissionStageHistoryRepository.create({
-      organizationId,
-      commissionId: commission.id,
-      newStage: "eligible",
-      changedBy: actor.id,
-      durationInMinutes: 0,
-    });
+    return Object.values(partyMap);
+  }
 
-    await this.publishEvent(EVENTS.COMMISSION_CREATED || "commission.created", {
-      commissionId: commission.id,
-    });
-    await this.logAudit({
-      action: AUDIT_ACTIONS.CREATE,
-      entity: "Commission",
-      entityId: commission.id,
-      userId: actor.id,
-      description: `Commission profile created for Deal ID '${deal.id}' expected ₹${commission.totalCommissionExpected}`,
-    });
-
-    return commission;
+  async createCommission(data, actor) {
+    return this.autoCreateFromDeal(data.dealId, data, actor);
   }
 
   async createInvoice(commissionId, slabId, invoiceData, actor) {

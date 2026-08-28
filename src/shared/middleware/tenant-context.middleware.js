@@ -22,9 +22,9 @@ function tenantContextMiddleware(request, reply, done) {
   // organizationType is always sourced from the signed JWT — never from client headers
   const organizationType = request.user?.organizationType || null;
 
-  // 2. Identify if this is a platform override (system task or Super Admin bypass)
-  // Secure: NEVER allow the client to set this via HTTP headers
-  const isSystemOverride = request.user?.role === 'super_admin';
+  // 2. Standard tenant routes must ALWAYS enforce organizationId matching the authenticated user.
+  // Administrative overrides only occur within explicitly defined platform admin handlers.
+  const isSystemOverride = false;
 
   const context = {
     organizationId,

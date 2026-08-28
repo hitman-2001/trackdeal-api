@@ -51,8 +51,9 @@ async function authenticate(request, reply) {
     throw new UnauthorizedError('Your account has been deactivated. Contact your administrator.');
   }
 
-  // Validate parent organization subscription status (Super Admins are exempt)
-  if (user.role !== 'super_admin') {
+  // Validate parent organization subscription status (System Admins are exempt)
+  const isSystemAdmin = decoded.role === 'system_admin' || user.role === 'system_admin' || user.role === 'super_admin';
+  if (!isSystemAdmin && user.organizationId) {
     const { Organization } = require('../../modules/organization/organization.model');
     const org = await tenantContext.run({ isSystemOverride: true }, () =>
       Organization.findById(user.organizationId)
@@ -62,11 +63,11 @@ async function authenticate(request, reply) {
       throw new UnauthorizedError('Organization account not found.');
     }
 
-    if (org.subscription.status === 'suspended') {
-      throw new UnauthorizedError('Your organization account has been suspended due to billing. Please contact billing support.');
+    if (org.status === 'suspended' || org.subscription?.status === 'suspended') {
+      throw new UnauthorizedError('Your organization account has been suspended. Please contact TrackDeal support.');
     }
 
-    if (org.subscription.status === 'cancelled') {
+    if (org.subscription?.status === 'cancelled') {
       throw new UnauthorizedError('Your organization account has been cancelled.');
     }
   }
@@ -77,11 +78,12 @@ async function authenticate(request, reply) {
   }
 
   // Synchronize authenticated tenant context for request lifetime
+  // isSystemOverride must ALWAYS be false for web requests so each user is strictly scoped to their own organizationId
   const tenantData = {
     organizationId: decoded.organizationId || user.organizationId?.toString(),
     branchId: decoded.branchId || user.branchId?.toString() || null,
     organizationType: decoded.organizationType || 'AGENCY',
-    isSystemOverride: decoded.role === 'super_admin',
+    isSystemOverride: false,
   };
   request.tenantContext = tenantData;
   tenantContext._storage.enterWith(tenantData);

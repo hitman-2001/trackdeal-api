@@ -29,6 +29,16 @@ class CustomerController extends BaseController {
     return this.ok(reply, customer, 'Customer updated successfully');
   }
 
+  async lookup(request, reply) {
+    const result = await this.customerService.lookupCustomer(request.query, this.getUser(request));
+    return this.ok(reply, result);
+  }
+
+  async getWithLeads(request, reply) {
+    const result = await this.customerService.getCustomerWithLeads(request.params.id, this.getUser(request));
+    return this.ok(reply, result);
+  }
+
   async remove(request, reply) {
     await this.customerService.deleteCustomer(request.params.id, this.getUser(request));
     return this.noContent(reply);
