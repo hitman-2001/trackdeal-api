@@ -355,25 +355,40 @@ function compileAgreementContent(templateClauses = [], structuredData = {}) {
     '{{society_registration_date}}': p.societyRegistrationDate ? new Date(p.societyRegistrationDate).toLocaleDateString('en-IN') : '',
     '{{carpet_area}}': p.carpetArea ? String(p.carpetArea) : '',
     '{{built_up_area}}': p.builtUpArea ? String(p.builtUpArea) : '',
+    '{{built_up_area_sq_m}}': p.builtUpAreaSqMtr ? String(p.builtUpAreaSqMtr) : (p.builtUpArea ? (p.builtUpArea * 0.092903).toFixed(2) : ''),
     '{{survey_numbers}}': p.surveyNumbers || '',
+    '{{hissa_number}}': p.hissaNumber || '',
     '{{cts_number}}': p.ctsNumber || '',
     '{{village}}': p.village || '',
+    '{{landmark}}': p.landmark || 'Gramdevi Mandir',
     '{{taluka}}': p.taluka || '',
-    '{{district}}': p.district || 'Pune',
+    '{{district}}': p.district || 'Palghar',
+    '{{municipal_corporation}}': p.municipalCorporation || 'Vasai Virar City Municipal Corporation',
     '{{sub_registrar_office}}': p.subRegistrarOffice || '',
     '{{share_certificate_number}}': p.shareCertificateNumber || '',
     '{{share_numbers_from}}': p.shareNumbersFrom || '',
     '{{share_numbers_to}}': p.shareNumbersTo || '',
+    '{{membership_number}}': p.membershipNumber || '',
     '{{previous_agreement_date}}': p.previousAgreementDate ? new Date(p.previousAgreementDate).toLocaleDateString('en-IN') : '',
     '{{previous_registration_number}}': p.previousRegistrationNumber || '',
     '{{developer_name}}': p.developerName || '',
 
-    // Financials
+    // Chain of Title details
+    '{{original_buyer_name}}': p.originalBuyerName || p.developerName || 'SMT. AASHA MANIK PATIL',
+    '{{original_developer_name}}': p.originalDeveloperName || p.developerName || 'SHREE SADGURU CONSTRUCTION CO.',
+    '{{original_agreement_date}}': p.originalAgreementDate ? new Date(p.originalAgreementDate).toLocaleDateString('en-IN') : '30/10/2007',
+    '{{original_registration_number}}': p.originalRegistrationNumber || 'VASAI 3 - 11208/2007',
+    '{{original_sub_registrar_office}}': p.originalSubRegistrarOffice || p.subRegistrarOffice || 'Vasai',
+    '{{previous_seller_name}}': p.previousSellerName || p.originalBuyerName || 'SMT. ASHA MANIK PATIL',
+    '{{previous_buyer_name}}': p.previousBuyerName || transferor1.name || 'MR. SANDEEP N RAWAL',
+
+    // Financials & Loan
     '{{consideration_amount}}': `₹${totalConsideration.toLocaleString('en-IN')}`,
     '{{consideration_amount_numeric}}': String(totalConsideration),
     '{{consideration_amount_words}}': considerationWords,
     '{{advance_amount}}': `₹${(Number(c.advanceAmount) || 0).toLocaleString('en-IN')}`,
     '{{balance_amount}}': `₹${(Math.max(0, totalConsideration - (Number(c.advanceAmount) || 0))).toLocaleString('en-IN')}`,
+    '{{loan_contingency_days}}': c.loanContingencyDays ? `${c.loanContingencyDays} working days` : '45 working days',
 
     // Dynamic blocks
     '{{payment_schedule_table}}': buildPaymentScheduleTable(payments, totalConsideration),
