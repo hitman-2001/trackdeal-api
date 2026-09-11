@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const { BaseService } = require('../../shared/base/BaseService');
 const { AgreementRepository, DocumentTemplateRepository } = require('./agreement.repository');
 const { DocumentTemplate } = require('./document-template.model');
-const { DEFAULT_SALE_DEED_TEMPLATE } = require('./agreement.seed');
+const { DEFAULT_SALE_DEED_TEMPLATE, SYSTEM_DOCUMENT_TEMPLATES } = require('./agreement.seed');
 const {
   numberToIndianWords,
   compileAgreementContent,
@@ -24,16 +24,18 @@ class AgreementService extends BaseService {
    * Seed default system templates if not present.
    */
   async ensureSystemTemplates() {
-    const existing = await DocumentTemplate.findOne({
-      templateCode: DEFAULT_SALE_DEED_TEMPLATE.templateCode,
-      isSystemDefault: true,
-    });
-    if (!existing) {
-      await DocumentTemplate.create({
-        ...DEFAULT_SALE_DEED_TEMPLATE,
+    for (const tpl of (SYSTEM_DOCUMENT_TEMPLATES || [DEFAULT_SALE_DEED_TEMPLATE])) {
+      const existing = await DocumentTemplate.findOne({
+        templateCode: tpl.templateCode,
         isSystemDefault: true,
-        isActive: true,
       });
+      if (!existing) {
+        await DocumentTemplate.create({
+          ...tpl,
+          isSystemDefault: true,
+          isActive: true,
+        });
+      }
     }
   }
 
@@ -271,6 +273,9 @@ class AgreementService extends BaseService {
       organizationId: actor.organizationId,
     });
     if (!agreement) throw new NotFoundError('Agreement', agreementId);
+    if (agreement.status === 'executed') {
+      throw new BusinessRuleError('Executed agreements are legally binding contracts and locked from further edits.', 'AGREEMENT_EXECUTED_LOCKED');
+    }
 
     const structuredData = inputData.structuredData || inputData;
     const totalAmount = Number(structuredData.consideration?.totalAmount) || 0;
@@ -294,8 +299,8 @@ class AgreementService extends BaseService {
     const finalClauses = [...compiledClauses, ...customClauses].sort((a, b) => (a.order || 0) - (b.order || 0));
 
     agreement.structuredData = structuredData;
-    if (data.pageSettings) {
-      agreement.pageSettings = data.pageSettings;
+    if (inputData.pageSettings) {
+      agreement.pageSettings = inputData.pageSettings;
     }
     agreement.clauses = finalClauses;
     agreement.compiledHtml = finalClauses.map((c) => c.content).join('<hr style="margin: 30px 0; border: none; border-top: 1px solid #cbd5e1;"/>');
@@ -331,6 +336,9 @@ class AgreementService extends BaseService {
       organizationId: actor.organizationId,
     });
     if (!agreement) throw new NotFoundError('Agreement', agreementId);
+    if (agreement.status === 'executed') {
+      throw new BusinessRuleError('Executed agreements are legally binding contracts and locked from further edits.', 'AGREEMENT_EXECUTED_LOCKED');
+    }
 
     if (clauses) agreement.clauses = clauses;
     if (pageSettings) agreement.pageSettings = pageSettings;
@@ -367,6 +375,9 @@ class AgreementService extends BaseService {
       organizationId: actor.organizationId,
     });
     if (!agreement) throw new NotFoundError('Agreement', agreementId);
+    if (agreement.status === 'executed') {
+      throw new BusinessRuleError('Executed agreements are legally binding contracts and locked from further edits.', 'AGREEMENT_EXECUTED_LOCKED');
+    }
 
     const targetOrder = insertAfterOrder !== undefined ? insertAfterOrder + 0.5 : (agreement.clauses.length + 1);
     const newClause = {
@@ -419,6 +430,9 @@ class AgreementService extends BaseService {
       organizationId: actor.organizationId,
     });
     if (!agreement) throw new NotFoundError('Agreement', agreementId);
+    if (agreement.status === 'executed') {
+      throw new BusinessRuleError('Executed agreements are legally binding contracts and locked from further edits.', 'AGREEMENT_EXECUTED_LOCKED');
+    }
 
     const template = await DocumentTemplate.findById(agreement.templateId);
     if (!template) throw new NotFoundError('DocumentTemplate', agreement.templateId);
@@ -467,6 +481,9 @@ class AgreementService extends BaseService {
       organizationId: actor.organizationId,
     });
     if (!agreement) throw new NotFoundError('Agreement', agreementId);
+    if (agreement.status === 'executed') {
+      throw new BusinessRuleError('Executed agreements are legally binding contracts and locked from further edits.', 'AGREEMENT_EXECUTED_LOCKED');
+    }
 
     const template = await DocumentTemplate.findById(agreement.templateId);
     if (!template) throw new NotFoundError('DocumentTemplate', agreement.templateId);

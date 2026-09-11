@@ -83,7 +83,9 @@ class AgreementController extends BaseController {
 
   exportDocx = async (req, reply) => {
     const agreement = await this.agreementService.getAgreementById(req.params.id, this.getUser(req));
-    const filename = `${agreement.agreementNumber || 'Agreement'}-${(agreement.structuredData?.transferees?.[0]?.name || 'Buyer').replace(/[^a-zA-Z0-9]/g, '_')}.doc`;
+    const rawNum = (agreement.agreementNumber || 'Agreement').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const rawBuyer = (agreement.structuredData?.transferees?.[0]?.name || 'Buyer').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${rawNum}_${rawBuyer}.doc`;
 
     const pageSettings = agreement.pageSettings || { pageSize: 'a4', orientation: 'portrait', margins: 'normal' };
     let sizeCss = '8.27in 11.69in'; // A4
@@ -101,6 +103,20 @@ class AgreementController extends BaseController {
       mLeft = `${(pageSettings.marginLeft || 25.4) / 25.4}in`;
       mRight = `${(pageSettings.marginRight || 25.4) / 25.4}in`;
     }
+
+    let fontCss = "'Book Antiqua', 'Times New Roman', serif";
+    switch (pageSettings.fontFamily) {
+      case 'times_new_roman': fontCss = "'Times New Roman', Times, serif"; break;
+      case 'garamond': fontCss = "Garamond, 'EB Garamond', Georgia, serif"; break;
+      case 'georgia': fontCss = "Georgia, 'Times New Roman', serif"; break;
+      case 'baskerville': fontCss = "Baskerville, 'Baskerville Old Face', Georgia, serif"; break;
+      case 'arial': fontCss = "Arial, 'Helvetica Neue', Helvetica, sans-serif"; break;
+      case 'calibri': fontCss = "Calibri, 'Carlito', Arial, sans-serif"; break;
+      case 'helvetica': fontCss = "'Helvetica Neue', Helvetica, Arial, sans-serif"; break;
+      default: fontCss = "'Book Antiqua', 'Times New Roman', serif";
+    }
+
+    const fontSizePt = pageSettings.fontSize || 11;
 
     const htmlContent = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -125,12 +141,14 @@ class AgreementController extends BaseController {
           mso-paper-source: 0;
         }
         div.Section1 { page: Section1; }
-        body { font-family: 'Book Antiqua', 'Times New Roman', serif; font-size: 11pt; line-height: 1.7; color: #000; }
+        body { font-family: ${fontCss}; font-size: ${fontSizePt}pt; line-height: 1.7; color: #000; }
         p { text-align: justify; margin: 0 0 12pt 0; text-justify: inter-ideograph; line-height: 1.7; }
         table { border-collapse: collapse; width: 100%; margin: 12pt 0; }
-        th, td { border: 1px solid #777; padding: 6pt 8pt; font-size: 10pt; text-align: left; }
+        th, td { border: 1px solid #777; padding: 6pt 8pt; font-size: ${fontSizePt - 1}pt; text-align: left; }
         th { background-color: #f2f2f2; font-weight: bold; }
-        h1, h2, h3 { text-align: center; font-family: 'Arial', sans-serif; }
+        h1, h2, h3 { text-align: center; font-family: ${fontCss}; }
+        .page-break { page-break-before: always; mso-break-type: section-break; }
+      </style>
         .page-break { page-break-before: always; mso-break-type: section-break; }
       </style>
     </head>
@@ -144,6 +162,7 @@ class AgreementController extends BaseController {
     reply
       .header('Content-Type', 'application/msword')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .header('Access-Control-Expose-Headers', 'Content-Disposition')
       .send(htmlContent);
   };
 }

@@ -43,62 +43,73 @@ async function runTest() {
   console.log("\n▶ Step 1: Listing templates...");
   const tplRes = await fetch("http://localhost:3000/api/v1/agreements/templates", { headers: authHeader });
   const tplData = await tplRes.json();
-  console.log("Templates found:", tplData.data?.length, "First:", tplData.data?.[0]?.name);
-  const saleDeedTemplate = tplData.data?.[0];
+  console.log("Templates found:", tplData.data?.length);
+  tplData.data?.forEach(t => console.log(` - [${t.templateCode}] ${t.name}`));
+  const resaleTemplate = tplData.data?.find(t => t.templateCode === 'AGREEMENT_FOR_RESALE') || tplData.data?.[0];
 
-  // 2. Create Agreement
-  console.log("\n▶ Step 2: Creating Agreement for Sale-Deed...");
+  // 2. Create Resale Agreement
+  console.log("\n▶ Step 2: Creating Agreement for Re-Sale using sample document data...");
   const createPayload = {
-    templateId: saleDeedTemplate._id,
+    templateId: resaleTemplate._id,
     structuredData: {
       transferors: [
-        { name: "Mr. Sandeep L. Makwana", age: 46, pan: "ABCDE1234F", occupation: "Business", address: "Flat 604, Avenue D, Baner", city: "Pune", pin: "411045" },
-        { name: "Mrs. Jalpa S. Makwana", age: 42, pan: "BCDEF2345G", occupation: "Homemaker", address: "Flat 604, Avenue D, Baner", city: "Pune", pin: "411045" }
+        { name: "MR. SANDEEP N RAWAL", age: 34, pan: "BBWPR0747K", occupation: "Business", address: "Flat no 302, Nityanand Shakti (mauli) co-op hsg.soc.ltd, near gramdevi mandir, nilemore, nallasopara (west)", city: "Nallasopara", state: "Maharashtra", pin: "401203" }
       ],
       transferees: [
-        { name: "Mr. Pramodnarayan Jha", age: 38, pan: "CDEFG3456H", occupation: "IT Professional", address: "Plot 12, Kothrud", city: "Pune", pin: "411038" }
+        { name: "Mr. VIVEK SAKHARAM KARAN", age: 26, pan: "JIMPK3184E", occupation: "Service", address: "Room No 202, Nityanand Mauli, Second Floor, Nilegaon, Nallasopara (west)", city: "Nallasopara", state: "Maharashtra", pin: "401203" },
+        { name: "Mrs. RASHMI VIVEK KARAN", age: 20, pan: "PKSPK1656M", occupation: "Homemaker", address: "Room No 202, Nityanand Mauli, Second Floor, Nilegaon, Nallasopara (west)", city: "Nallasopara", state: "Maharashtra", pin: "401203" }
       ],
       property: {
-        flatNumber: "604",
-        floor: "6th",
-        wing: "D",
-        buildingName: "Avenue D Building",
-        projectName: "River Royale Residency",
-        societyName: "River Royale Co-operative Housing Society Ltd.",
-        societyRegistrationNumber: "PNA/PNA(2)/HSG/TC/1234/2020",
-        societyRegistrationDate: "2020-03-15",
-        carpetArea: 920,
-        builtUpArea: 1150,
-        surveyNumbers: "48/1A",
-        ctsNumber: "1892",
-        village: "Mahalunge",
-        taluka: "Haveli",
-        district: "Pune",
-        subRegistrarOffice: "Haveli No. 17",
-        shareCertificateNumber: "SC-448",
-        shareNumbersFrom: "2161",
-        shareNumbersTo: "2165",
-        previousAgreementDate: "2021-08-10",
-        previousRegistrationNumber: "HV17-8899/2021",
-        developerName: "Godrej Landmark Developers"
+        flatNumber: "302",
+        floor: "Third Floor",
+        wing: "C –Wing (Earlier was A Wing)",
+        buildingName: "NITYANAND SHAKTI CO-OP HSG SOC LTD",
+        societyName: "NITYANAND SHAKTI CO-OP HSG SOC LTD",
+        societyRegistrationNumber: "TNA/VSI/HSG/TC/19137/2007-2008",
+        societyRegistrationDate: "2007-11-29",
+        builtUpArea: 495,
+        builtUpAreaSqMtr: 46.00,
+        carpetArea: 410,
+        surveyNumbers: "SURVEY NO 1",
+        hissaNumber: "Hissa No 5 & 6",
+        village: "Nilemore",
+        landmark: "Near – Grandevi Mandir, Nilegaon",
+        taluka: "Vasai",
+        district: "Palghar",
+        municipalCorporation: "Vasai Virar Municipal Corporation",
+        subRegistrarOffice: "Vasai",
+        shareCertificateNumber: "SC-44",
+        shareNumbersFrom: "431",
+        shareNumbersTo: "440",
+        membershipNumber: "44",
+        originalBuyerName: "SMT. AASHA MANIK PATIL",
+        originalDeveloperName: "SHREE SADGURU CONSTRUCTION CO.",
+        originalAgreementDate: "2007-10-30",
+        originalRegistrationNumber: "VASAI 3 - 11208/2007",
+        originalSubRegistrarOffice: "Vasai-3",
+        previousSellerName: "SMT. ASHA MANIK PATIL",
+        previousBuyerName: "MR. SANDEEP N RAWAL",
+        previousAgreementDate: "2017-06-30",
+        previousRegistrationNumber: "5926/2017",
+        previousSubRegistrarOffice: "Vasai-3"
       },
       agreement: {
         agreementDate: new Date().toISOString().slice(0, 10),
-        agreementPlace: "Pune",
-        jurisdictionCity: "Pune"
+        agreementPlace: "Nallasopara",
+        jurisdictionCity: "Vasai"
       },
       consideration: {
-        totalAmount: 3275000,
-        advanceAmount: 600000
+        totalAmount: 3350000,
+        advanceAmount: 351000,
+        loanContingencyDays: 45,
+        societyTransferFeeRatio: "equal_50_50"
       },
       payments: [
-        { date: "2026-01-31", amount: 21001, mode: "UPI", bankName: "Kotak Mahindra Bank", referenceNumber: "UPI-998822", branch: "Baner" },
-        { date: "2026-04-02", amount: 578999, mode: "Cheque", bankName: "State Bank of India", referenceNumber: "CHQ-004411", branch: "Aundh" },
-        { date: "2026-08-20", amount: 2675000, mode: "Bank Transfer", bankName: "HDFC Bank", referenceNumber: "UTR-88224411", branch: "Kothrud" }
+        { date: new Date().toISOString().slice(0, 10), amount: 351000, mode: "Online / Bank Transfer", bankName: "HDFC Bank", referenceNumber: "TXN-99882211", branch: "Vasai West" }
       ],
       witnesses: [
-        { name: "Rajesh K. Verma", address: "B-201, Green Woods, Baner, Pune" },
-        { name: "Anand M. Shinde", address: "Row House 4, Aundh, Pune" }
+        { name: "1. ____________________________", address: "Address: ____________________________" },
+        { name: "2. ____________________________", address: 'Address: ____________________________' }
       ]
     }
   };
@@ -178,6 +189,22 @@ async function runTest() {
   console.log("\n▶ Step 8: Testing Word (.doc) Export...");
   const docxRes = await fetch(`http://localhost:3000/api/v1/agreements/${agr._id}/docx`, { headers: authHeader });
   console.log("Word Export Status:", docxRes.status, "Content-Type:", docxRes.headers.get("content-type"));
+
+  // 9. Test Execution Lock (Status -> executed)
+  console.log("\n▶ Step 9: Updating Status to executed and verifying edit lock...");
+  await fetch(`http://localhost:3000/api/v1/agreements/${agr._id}/status`, {
+    method: "PATCH",
+    headers: authHeader,
+    body: JSON.stringify({ status: "executed" })
+  });
+
+  const lockedEditRes = await fetch(`http://localhost:3000/api/v1/agreements/${agr._id}/details`, {
+    method: "PUT",
+    headers: authHeader,
+    body: JSON.stringify(updatePayload)
+  });
+  const lockedData = await lockedEditRes.json();
+  console.log("✅ Executed Lock Test HTTP Status:", lockedEditRes.status, "Message:", lockedData.message);
 
   console.log("\n=================================================");
   console.log("🎉 ALL AGREEMENT BACKEND AUTOMATION TESTS PASSED!");

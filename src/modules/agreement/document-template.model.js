@@ -60,6 +60,8 @@ const documentTemplateSchema = new mongoose.Schema(
       pageSize: { type: String, enum: ['a4', 'legal', 'letter'], default: 'a4' },
       orientation: { type: String, enum: ['portrait', 'landscape'], default: 'portrait' },
       margins: { type: String, enum: ['normal', 'narrow', 'moderate', 'custom'], default: 'normal' },
+      fontFamily: { type: String, default: 'book_antiqua' },
+      fontSize: { type: Number, default: 11 },
       marginTop: { type: Number, default: 25.4 },
       marginBottom: { type: Number, default: 25.4 },
       marginLeft: { type: Number, default: 25.4 },
