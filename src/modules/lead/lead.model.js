@@ -30,6 +30,27 @@ const leadSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true },
 
     // Source
+    tenantVertical: {
+      type: String,
+      enum: ["realEstate", "education"],
+      default: "realEstate",
+      index: true,
+    },
+    parentName: { type: String, trim: true },
+    parentMobile: { type: String, trim: true },
+    classInterestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "EducationClass",
+      default: null,
+      index: true,
+    },
+    convertedStudentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Student",
+      default: null,
+      index: true,
+    },
+
     source: {
       type: String,
       enum: [
@@ -42,7 +63,9 @@ const leadSchema = new mongoose.Schema(
         "walk_in",
         "facebook_ads",
         "google_ads",
-        "manual_entry"
+        "manual_entry",
+        "campus",
+        "other",
       ],
       required: true,
     },
@@ -64,7 +87,9 @@ const leadSchema = new mongoose.Schema(
         "booked",
         "won",
         "booking_defaulted",
-        "lost"
+        "lost",
+        "counseling_scheduled",
+        "enrolled"
       ],
       default: "new",
       index: true,

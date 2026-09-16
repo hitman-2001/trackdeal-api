@@ -8,6 +8,12 @@ const mongoose = require('mongoose');
 
 const userInvitationSchema = new mongoose.Schema(
   {
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      default: null,
+      index: true,
+    },
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',

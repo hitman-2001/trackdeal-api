@@ -68,12 +68,14 @@ async function authRoutes(fastify, opts) {
   fastify.post('/login', {
     schema: {
       tags: ['Auth'],
-      summary: 'Login with email and password',
+      summary: 'Login with email and password (organization required except platform Super Admin)',
       security: [],
       body: {
         type: 'object',
         required: ['email', 'password'],
         properties: {
+          organization: { type: 'string', maxLength: 120 },
+          tenant: { type: 'string', maxLength: 80 },
           email: { type: 'string', format: 'email' },
           password: { type: 'string', minLength: 1 },
         },

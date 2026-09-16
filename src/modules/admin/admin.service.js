@@ -13,15 +13,15 @@ const { Deal } = require('../deal/deal.model');
 const { Agent } = require('../agent/agent.model');
 const { AuditLog } = require('../audit/audit.model');
 const { tenantContext } = require('../../shared/context/tenant-context');
-const { NotFoundError, ForbiddenError, ConflictError, BusinessRuleError } = require('../../shared/errors');
+const { isPlatformAdmin } = require('../tenant/tenant.constants');
 
 class AdminService extends BaseService {
   /**
    * Enforce system admin authority
    */
   _ensureSystemAdmin(actor) {
-    if (!actor || actor.role !== 'system_admin') {
-      throw new ForbiddenError('Access restricted to TrackDeal System Administrators.');
+    if (!isPlatformAdmin(actor?.role)) {
+      throw new ForbiddenError('Access restricted to TrackDeal Super Administrators.');
     }
   }
 
@@ -208,6 +208,7 @@ class AdminService extends BaseService {
         ownerMobile,
         password,
         plan = 'AGENCY',
+        vertical = 'realEstate',
         maxUsers = 10,
         city = 'Pune',
         state = 'Maharashtra',
@@ -227,15 +228,24 @@ class AdminService extends BaseService {
       // Generate organization code if not provided
       const orgCode = (code || name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)).toUpperCase();
 
+      const { ensureVerticalTenant } = require('../tenant/tenant.utils');
+      const { normalizeVertical, mapOrganizationPlan } = require('../tenant/tenant.constants');
+      const orgVertical = normalizeVertical(vertical);
+      const organizationType = mapOrganizationPlan(orgVertical, plan);
+      const verticalTenant = await ensureVerticalTenant(orgVertical);
+      const tenantId = verticalTenant?._id || null;
+
       // 1. Create Organization
       const org = await Organization.create({
         name: name.trim(),
         code: orgCode,
         email: cleanEmail,
         phone: ownerMobile || '',
-        organizationType: plan,
+        tenantId,
+        vertical: orgVertical,
+        organizationType,
         status: 'active',
-        subscriptionPlan: plan.toLowerCase(),
+        subscriptionPlan: organizationType.toLowerCase(),
         maxUsers: Number(maxUsers) || 10,
         city: city || 'Pune',
         state: state || 'Maharashtra',
@@ -270,6 +280,7 @@ class AdminService extends BaseService {
         mobile: ownerMobile || '',
         password: hashedPassword,
         organizationId: org._id,
+        tenantId: org.tenantId || null,
         roleId: orgAdminRole._id,
         status: 'active',
         isActive: true,

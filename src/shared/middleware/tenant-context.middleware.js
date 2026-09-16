@@ -17,6 +17,7 @@ const { tenantContext } = require('../context/tenant-context');
  */
 function tenantContextMiddleware(request, reply, done) {
   // 1. Extract tenant IDs (favor verified request.user JWT payload, fallback to headers)
+  const tenantId = request.user?.tenantId || request.headers['x-tenant-id'] || null;
   const organizationId = request.user?.organizationId || request.headers['x-organization-id'] || null;
   const branchId = request.user?.branchId || request.headers['x-branch-id'] || null;
   // organizationType is always sourced from the signed JWT — never from client headers
@@ -27,6 +28,7 @@ function tenantContextMiddleware(request, reply, done) {
   const isSystemOverride = false;
 
   const context = {
+    tenantId,
     organizationId,
     branchId,
     organizationType,

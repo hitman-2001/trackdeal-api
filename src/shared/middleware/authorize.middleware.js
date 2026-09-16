@@ -24,7 +24,7 @@ function requirePermission(permissionKey) {
     }
 
     // Super admin and Org admin bypass all permission restrictions within their scope
-    if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
+    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin' || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
       return;
     }
 
@@ -56,7 +56,7 @@ function requireAnyPermission(permissionsList) {
     }
 
     // Super admin and Org admin bypass
-    if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
+    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin' || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
       return;
     }
 
@@ -86,7 +86,7 @@ function requireRole(roleCode) {
       throw new ForbiddenError('Access denied: not authenticated');
     }
 
-    if (user.role !== ROLES.SUPER_ADMIN && user.role !== normalizedCode) {
+    if (user.role !== ROLES.SUPER_ADMIN && user.role !== 'system_admin' && user.role !== normalizedCode) {
       throw new ForbiddenError(
         `Access denied: role restriction active. Required: ${roleCode}`
       );
@@ -113,7 +113,7 @@ function authorize(requiredPermissions, options = { requireAll: false }) {
       throw new ForbiddenError('Access denied: not authenticated');
     }
 
-    if (user.role === ROLES.SUPER_ADMIN) {
+    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin') {
       return;
     }
 
@@ -145,7 +145,7 @@ function authorizeOwnerOrPermission(getResourceUserId, permission) {
     }
 
     // Super admin or users with the overriding permission bypass ownership restrictions
-    if (user.role === ROLES.SUPER_ADMIN || (user.permissions || []).includes(permission.toLowerCase().trim())) {
+    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin' || (user.permissions || []).includes(permission.toLowerCase().trim())) {
       return;
     }
 

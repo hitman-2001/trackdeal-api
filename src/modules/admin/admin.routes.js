@@ -8,8 +8,9 @@ const { ForbiddenError } = require('../../shared/errors');
  * Strict System Administrator Middleware
  */
 async function requireSystemAdmin(request, reply) {
-  if (request.user?.role !== 'system_admin') {
-    throw new ForbiddenError('Access restricted to TrackDeal System Administrators.');
+  const { isPlatformAdmin } = require('../tenant/tenant.constants');
+  if (!isPlatformAdmin(request.user?.role)) {
+    throw new ForbiddenError('Access restricted to TrackDeal Super Administrators.');
   }
 }
 

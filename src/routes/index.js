@@ -10,6 +10,8 @@
 // ---------------------------------------------------------------------------
 
 const authRoutes = require('../modules/auth/auth.routes');
+const tenantRoutes = require('../modules/tenant/tenant.routes');
+const educationRoutes = require('../modules/education/education.routes');
 const userRoutes = require('../modules/user/user.routes');
 const leadRoutes = require('../modules/lead/lead.routes');
 const customerRoutes = require('../modules/customer/customer.routes');
@@ -62,6 +64,8 @@ async function registerRoutes(fastify, opts) {
 
   // Auth routes
   fastify.register(authRoutes, { prefix: '/auth' });
+  fastify.register(tenantRoutes, { prefix: '/tenants' });
+  fastify.register(educationRoutes, { prefix: '/education' });
 
   // Domain module routes
   fastify.register(userRoutes, { prefix: '/users' });

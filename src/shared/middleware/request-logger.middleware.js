@@ -1,6 +1,6 @@
 'use strict';
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('node:crypto');
 
 // ---------------------------------------------------------------------------
 // Request Logger Hook (onRequest)
@@ -15,7 +15,7 @@ const { v4: uuidv4 } = require('uuid');
  */
 async function requestLoggerHook(request, reply) {
   // Assign or propagate request ID
-  const requestId = request.headers['x-request-id'] || uuidv4();
+  const requestId = request.headers['x-request-id'] || randomUUID();
   request.requestId = requestId;
   reply.header('X-Request-ID', requestId);
 

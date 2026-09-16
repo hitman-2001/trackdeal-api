@@ -317,6 +317,7 @@ class BaseRepository {
 
     const organizationId = tenantContext.getOrganizationId();
     const branchId = tenantContext.getBranchId();
+    const tenantId = tenantContext.getTenantId();
 
     if (!organizationId) {
       throw new Error(
@@ -325,6 +326,10 @@ class BaseRepository {
     }
 
     const tenantFilter = { ...filter, organizationId };
+
+    if (this.model?.schema?.path('tenantId') && tenantId) {
+      tenantFilter.tenantId = tenantId;
+    }
 
     // Branch filter is opt-in: only applied when isBranchScoped=true AND a branchId is active.
     // This prevents INDIVIDUAL_AGENT / AGENCY queries from being silently scoped to a branch.
@@ -349,8 +354,10 @@ class BaseRepository {
     const { tenantContext } = require('../context/tenant-context');
     const organizationId = tenantContext.getOrganizationId();
     const branchId = tenantContext.getBranchId();
+    const tenantId = tenantContext.getTenantId();
 
     const targetOrgId = data.organizationId || organizationId;
+    const targetTenantId = data.tenantId || tenantId;
 
     if (!targetOrgId && !tenantContext.isSystemOverride()) {
       throw new Error(
@@ -361,6 +368,7 @@ class BaseRepository {
     return {
       ...data,
       ...(targetOrgId ? { organizationId: targetOrgId } : {}),
+      ...(this.model?.schema?.path('tenantId') && targetTenantId ? { tenantId: targetTenantId } : {}),
       branchId: data.branchId || branchId || null,
     };
   }

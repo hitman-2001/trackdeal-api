@@ -31,20 +31,67 @@ class AuthService extends BaseService {
 
   /**
    * Login — validate credentials and issue tokens with session tracking.
-   * @param {object} credentials - { email, password }
+   * @param {object} credentials - { email, password, organization, tenant }
    * @param {object} meta        - { ip, userAgent }
-   * @returns {{ accessToken, refreshToken, user }}
    */
   async login(credentials, meta = {}) {
-    const { email, password } = credentials;
+    const { email, password, organization, tenant } = credentials;
+    const { isPlatformAdmin } = require('../tenant/tenant.constants');
+    const mongoose = require('mongoose');
 
-    // 1. System-level bypass to search user across organizations before establishing tenant context
-    const user = await tenantContext.run({ isSystemOverride: true }, () =>
-      this.userRepository.findByEmailWithPassword(email)
-    );
+    const resolveRoleCode = async (userDoc) => {
+      const roleRef = userDoc.roleId || userDoc.role;
+      if (roleRef && typeof roleRef === 'object' && roleRef.code) return roleRef.code;
+      if (roleRef) {
+        const RoleModel = mongoose.model('Role');
+        const roleDoc = await tenantContext.run({ isSystemOverride: true }, () =>
+          RoleModel.findById(roleRef).select('code').lean()
+        );
+        return roleDoc?.code || null;
+      }
+      return null;
+    };
 
-    if (!user) {
-      throw new UnauthorizedError('Invalid email or password');
+    const orgInput = organization || tenant;
+    let organizationDoc = null;
+    let tenantDoc = null;
+    let user;
+
+    if (!orgInput || !String(orgInput).trim()) {
+      user = await tenantContext.run({ isSystemOverride: true }, () =>
+        this.userRepository.findByEmailWithPassword(email)
+      );
+      if (!user) {
+        throw new UnauthorizedError('Invalid email or password');
+      }
+      const roleCode = await resolveRoleCode(user);
+      if (!isPlatformAdmin(roleCode)) {
+        throw new UnauthorizedError('Organization is required');
+      }
+    } else {
+      const { findActiveOrganizationByInput } = require('../tenant/tenant.utils');
+      organizationDoc = await tenantContext.run({ isSystemOverride: true }, () =>
+        findActiveOrganizationByInput(orgInput)
+      );
+
+      if (!organizationDoc) {
+        throw new UnauthorizedError('Invalid organization, email, or password');
+      }
+
+      user = await tenantContext.run({ isSystemOverride: true }, () =>
+        this.userRepository.findByEmailWithPassword(email, {
+          organizationId: organizationDoc._id,
+        })
+      );
+
+      if (!user) {
+        throw new UnauthorizedError('Invalid organization, email, or password');
+      }
+
+      const userOrgId = user.organizationId ? user.organizationId.toString() : null;
+      if (userOrgId !== organizationDoc._id.toString()) {
+        throw new UnauthorizedError('Invalid organization, email, or password');
+      }
     }
 
     if (!user.isActive) {
@@ -52,12 +99,13 @@ class AuthService extends BaseService {
     }
 
     // 2. Establish tenant execution context to safely perform updates and writes
-    return tenantContext.run({ organizationId: user.organizationId, branchId: user.branchId }, async () => {
-      if (user.organizationId) {
-        const { Organization } = require('../organization/organization.model');
-        const org = await tenantContext.run({ isSystemOverride: true }, () =>
-          Organization.findById(user.organizationId).lean()
-        );
+    return tenantContext.run({
+      tenantId: organizationDoc?.tenantId || tenantDoc?._id || user.tenantId || null,
+      organizationId: organizationDoc?._id || user.organizationId,
+      branchId: user.branchId,
+    }, async () => {
+      if (user.organizationId || organizationDoc) {
+        const org = organizationDoc;
         if (org && org.status === 'suspended') {
           throw new ForbiddenError('Your organization has been suspended. Please contact TrackDeal support.');
         }
@@ -83,7 +131,7 @@ class AuthService extends BaseService {
           throw new ForbiddenError('Account locked due to consecutive failed attempts. Please try again in 15 minutes.');
         }
         await user.save();
-        throw new UnauthorizedError('Invalid email or password');
+        throw new UnauthorizedError('Invalid organization, email, or password');
       }
 
       // Success: Reset brute force lockout counters
@@ -134,6 +182,12 @@ class AuthService extends BaseService {
       sanitizedUser.role = tokenPayload.role;
       sanitizedUser.permissions = tokenPayload.permissions;
       sanitizedUser.organizationType = tokenPayload.organizationType;
+      sanitizedUser.tenantId = tokenPayload.tenantId;
+      sanitizedUser.tenantSlug = tokenPayload.tenantSlug;
+      sanitizedUser.tenantDomain = tokenPayload.tenantDomain;
+      sanitizedUser.tenantVertical = tokenPayload.tenantVertical || tokenPayload.tenantDomain;
+      sanitizedUser.enabledModules = tokenPayload.enabledModules;
+      sanitizedUser.featuresFlags = tokenPayload.featuresFlags;
       sanitizedUser.forcePasswordChange = !!user.forcePasswordChange;
 
       return {
@@ -194,7 +248,11 @@ class AuthService extends BaseService {
       }
 
       // Establish target organization context for rotation execution
-      return tenantContext.run({ organizationId: user.organizationId, branchId: user.branchId }, async () => {
+      return tenantContext.run({
+        tenantId: user.tenantId,
+        organizationId: user.organizationId,
+        branchId: user.branchId,
+      }, async () => {
         // Rotate token! Mark old as used
         storedToken.isUsed = true;
 
@@ -303,7 +361,18 @@ class AuthService extends BaseService {
     });
 
     if (!user) throw new UnauthorizedError('User not found');
-    return this._sanitizeUser(user);
+    const sanitized = this._sanitizeUser(user);
+    const tokenPayload = await this._buildTokenPayload(user);
+    sanitized.role = tokenPayload.role;
+    sanitized.permissions = tokenPayload.permissions;
+    sanitized.organizationType = tokenPayload.organizationType;
+    sanitized.tenantId = tokenPayload.tenantId;
+    sanitized.tenantSlug = tokenPayload.tenantSlug;
+    sanitized.tenantDomain = tokenPayload.tenantDomain;
+    sanitized.tenantVertical = tokenPayload.tenantVertical || tokenPayload.tenantDomain;
+    sanitized.enabledModules = tokenPayload.enabledModules;
+    sanitized.featuresFlags = tokenPayload.featuresFlags;
+    return sanitized;
   }
 
   /**
@@ -417,23 +486,68 @@ class AuthService extends BaseService {
     // This is done once at login/refresh and baked into the JWT, so no
     // per-request DB lookups are required for tier-based feature gating.
     let organizationType = 'AGENCY'; // safe fallback
+    let tenantId = user.tenantId || null;
+    let tenantSlug = null;
+    let tenantDomain = 'realEstate';
+    let enabledModules = [];
+    let featuresFlags = {};
+    let orgVertical = null;
     if (user.organizationId && require('mongoose').Types.ObjectId.isValid(user.organizationId)) {
       const { Organization } = require('../organization/organization.model');
       const org = await tenantContext.run({ isSystemOverride: true }, () =>
-        Organization.findById(user.organizationId).select('organizationType').lean()
+        Organization.findById(user.organizationId).select('organizationType tenantId vertical').lean()
       );
       if (org?.organizationType) {
         organizationType = org.organizationType;
       }
+      if (!tenantId && org?.tenantId) {
+        tenantId = org.tenantId;
+      }
+      if (org?.vertical) {
+        orgVertical = org.vertical;
+      }
     }
+
+    const { modulesToFeatureFlags, moduleKeysForVertical, normalizeVertical } = require('../tenant/tenant.constants');
+    if (tenantId) {
+      const { Tenant } = require('../tenant/tenant.model');
+      const tenantDoc = await tenantContext.run({ isSystemOverride: true }, () =>
+        Tenant.findById(tenantId).select('slug domain enabledModules').lean()
+      );
+      if (tenantDoc) {
+        tenantSlug = tenantDoc.slug;
+        tenantDomain = orgVertical || tenantDoc.domain || 'realEstate';
+        enabledModules = Array.isArray(tenantDoc.enabledModules) && tenantDoc.enabledModules.length
+          ? tenantDoc.enabledModules
+          : moduleKeysForVertical(tenantDomain);
+        featuresFlags = modulesToFeatureFlags(enabledModules, tenantDomain);
+      }
+    }
+
+    if (orgVertical) {
+      tenantDomain = normalizeVertical(orgVertical);
+      enabledModules = moduleKeysForVertical(tenantDomain);
+      featuresFlags = modulesToFeatureFlags(enabledModules, tenantDomain);
+    }
+
+    const { isPlatformAdmin } = require('../tenant/tenant.constants');
+    const permissions = isPlatformAdmin(roleName)
+      ? ['*', ...Array.from(permissionsSet)]
+      : Array.from(permissionsSet);
 
     return {
       id: user.id,
       email: user.email,
       role: roleName,
-      permissions: Array.from(permissionsSet),
+      permissions,
       firstName: user.firstName,
       lastName: user.lastName,
+      tenantId,
+      tenantSlug,
+      tenantDomain,
+      tenantVertical: tenantDomain,
+      enabledModules,
+      featuresFlags,
       organizationId: user.organizationId,
       organizationType,
       branchId: user.branchId,
@@ -544,6 +658,7 @@ class AuthService extends BaseService {
           lastName: 'User',
           email: invite.email,
           password: hashedPassword,
+          tenantId: invite.tenantId || null,
           organizationId: invite.organizationId,
           branchId: invite.branchId,
           roleId: invite.roleId,

@@ -15,11 +15,20 @@ class TenantContext {
 
   /**
    * Run a function within a specified tenant context.
-   * @param {object} context - { organizationId, branchId, isSystemOverride }
+   * @param {object} context - { tenantId, organizationId, branchId, isSystemOverride }
    * @param {function} callback
    */
   run(context, callback) {
     return this._storage.run(context, callback);
+  }
+
+  /**
+   * Get current active platform tenant ID.
+   * @returns {string|undefined}
+   */
+  getTenantId() {
+    const store = this.getStore();
+    return store?.tenantId;
   }
 
   /**

@@ -111,6 +111,7 @@ class UserService extends BaseService {
       ...data,
       password: hashedPassword,
       organizationId: actor.organizationId,
+      tenantId: actor.tenantId || data.tenantId || null,
       branchId: targetBranchId,
       status: 'active', // Direct creation registers active users
       createdBy: actor.id,
@@ -370,6 +371,7 @@ class UserService extends BaseService {
     expiresAt.setHours(expiresAt.getHours() + 48); // Expires in 48 hours
 
     const inviteDoc = await this.userInvitationRepository.create({
+      tenantId: actor.tenantId || null,
       organizationId: actor.organizationId,
       branchId: targetBranchId,
       roleId: data.roleId,

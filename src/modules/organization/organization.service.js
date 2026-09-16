@@ -88,10 +88,18 @@ class OrganizationService extends BaseService {
 
     // 4. Create Organization inside system override context to bypass tenant filters
     const org = await tenantContext.run({ isSystemOverride: true }, async () => {
+      let tenantId = data.tenantId || actor.tenantId || null;
+      if (!tenantId) {
+        const { Tenant } = require('../tenant/tenant.model');
+        const swarajya = await Tenant.findOne({ slug: 'swarajya', status: 'active', isDeleted: { $ne: true } });
+        tenantId = swarajya?._id || null;
+      }
+
       return this.organizationRepository.create({
         ...data,
         code: codeSlug,
         subscription,
+        tenantId,
       });
     });
 
@@ -116,6 +124,7 @@ class OrganizationService extends BaseService {
     await tenantContext.run({ isSystemOverride: true }, () =>
       UserInvitation.create({
         organizationId: org._id,
+        tenantId: org.tenantId || null,
         roleId: orgAdminRole._id,
         email: data.adminEmail.toLowerCase().trim(),
         invitationToken: hashedToken,

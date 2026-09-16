@@ -52,7 +52,20 @@ async function authenticate(request, reply) {
   }
 
   // Validate parent organization subscription status (System Admins are exempt)
-  const isSystemAdmin = decoded.role === 'system_admin' || user.role === 'system_admin' || user.role === 'super_admin';
+  const { isPlatformAdmin } = require('../../modules/tenant/tenant.constants');
+  const isSystemAdmin = isPlatformAdmin(decoded.role) || isPlatformAdmin(user.role);
+  if (!isSystemAdmin) {
+    const resolvedTenantId = decoded.tenantId || user.tenantId;
+    if (resolvedTenantId) {
+      const { Tenant } = require('../../modules/tenant/tenant.model');
+      const tenant = await tenantContext.run({ isSystemOverride: true }, () =>
+        Tenant.findById(resolvedTenantId)
+      );
+      if (!tenant || tenant.isDeleted || tenant.status !== 'active') {
+        throw new UnauthorizedError('Your tenant account is not active. Please contact TrackDeal support.');
+      }
+    }
+  }
   if (!isSystemAdmin && user.organizationId) {
     const { Organization } = require('../../modules/organization/organization.model');
     const org = await tenantContext.run({ isSystemOverride: true }, () =>
@@ -80,6 +93,7 @@ async function authenticate(request, reply) {
   // Synchronize authenticated tenant context for request lifetime
   // isSystemOverride must ALWAYS be false for web requests so each user is strictly scoped to their own organizationId
   const tenantData = {
+    tenantId: decoded.tenantId || user.tenantId?.toString() || null,
     organizationId: decoded.organizationId || user.organizationId?.toString(),
     branchId: decoded.branchId || user.branchId?.toString() || null,
     organizationType: decoded.organizationType || 'AGENCY',

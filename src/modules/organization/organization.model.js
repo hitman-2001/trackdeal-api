@@ -8,6 +8,13 @@ const mongoose = require('mongoose');
 
 const organizationSchema = new mongoose.Schema(
   {
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: false,
+      default: null,
+      index: true,
+    },
     name: {
       type: String,
       required: true,
@@ -21,6 +28,12 @@ const organizationSchema = new mongoose.Schema(
       trim: true, // e.g. 'acme_realestate'
     },
     // Primary control variable governing roles, features, branch availability, and data scoping
+    vertical: {
+      type: String,
+      enum: ['realEstate', 'education'],
+      default: 'realEstate',
+      index: true,
+    },
     organizationType: {
       type: String,
       enum: ['INDIVIDUAL_AGENT', 'AGENCY', 'ENTERPRISE_AGENCY'],

@@ -18,8 +18,17 @@ class UserRepository extends BaseRepository {
    * @param {string} email
    * @returns {Promise<User|null>}
    */
-  async findByEmailWithPassword(email) {
-    return this.model.findOne({ email: email.toLowerCase(), isDeleted: false }).select('+password');
+  async findByEmailWithPassword(email, scope = null) {
+    const query = { email: email.toLowerCase(), isDeleted: false };
+    if (scope && typeof scope === 'object') {
+      if (scope.organizationId) query.organizationId = scope.organizationId;
+      if (scope.tenantId) {
+        query.$or = [{ tenantId: scope.tenantId }, { tenantId: null }];
+      }
+    } else if (scope) {
+      query.$or = [{ tenantId: scope }, { tenantId: null }];
+    }
+    return this.model.findOne(query).select('+password');
   }
 
   /**

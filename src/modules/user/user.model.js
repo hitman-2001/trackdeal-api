@@ -16,6 +16,13 @@ const deviceSchema = new mongoose.Schema({
 const userSchema = new mongoose.Schema(
   {
     // SaaS Boundaries
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: false,
+      default: null,
+      index: true,
+    },
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
@@ -106,6 +113,7 @@ const userSchema = new mongoose.Schema(
 
 // Indexes for Multi-Tenant Isolation and Search performance
 userSchema.index({ organizationId: 1, email: 1 }, { unique: true });
+userSchema.index({ tenantId: 1, email: 1 });
 userSchema.index({ status: 1, roleId: 1 });
 
 // Full-text search
