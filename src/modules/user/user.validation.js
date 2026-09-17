@@ -14,15 +14,16 @@ const userIdParamSchema = {
 
 const createUserSchema = {
   type: 'object',
-  required: ['firstName', 'lastName', 'email', 'password', 'roleId'],
-  additionalProperties: false,
+  required: ['email', 'password', 'roleId'],
+  additionalProperties: true,
   properties: {
-    firstName: { type: 'string', minLength: 2, maxLength: 50 },
-    lastName: { type: 'string', minLength: 2, maxLength: 50 },
+    firstName: { type: 'string', minLength: 1, maxLength: 50 },
+    lastName: { type: 'string', minLength: 1, maxLength: 50 },
+    name: { type: 'string', minLength: 1, maxLength: 100 },
     email: { type: 'string', format: 'email' },
     phone: { type: 'string', pattern: '^[0-9+ -]{5,20}$' },
     mobile: { type: 'string', pattern: '^[0-9+ -]{5,20}$' }, // Keep for legacy fields
-    password: { type: 'string', minLength: 8, maxLength: 100 },
+    password: { type: 'string', minLength: 6, maxLength: 100 },
     roleId: { type: 'string', pattern: '^[0-9a-fA-F]{24}$' },
     branchId: { type: 'string', pattern: '^[0-9a-fA-F]{24}$', nullable: true },
     employeeCode: { type: 'string', maxLength: 50 },
@@ -95,11 +96,15 @@ const transferBranchSchema = {
 const inviteUserSchema = {
   type: 'object',
   required: ['email', 'roleId'],
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     email: { type: 'string', format: 'email' },
     roleId: { type: 'string', pattern: '^[0-9a-fA-F]{24}$' },
     branchId: { type: 'string', pattern: '^[0-9a-fA-F]{24}$', nullable: true },
+    password: { type: 'string', minLength: 6, maxLength: 100 },
+    firstName: { type: 'string', minLength: 1, maxLength: 50 },
+    lastName: { type: 'string', minLength: 1, maxLength: 50 },
+    name: { type: 'string', minLength: 1, maxLength: 100 },
   },
 };
 

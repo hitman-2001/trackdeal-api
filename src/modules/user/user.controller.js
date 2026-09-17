@@ -143,6 +143,10 @@ class UserController extends BaseController {
    */
   async invite(request, reply) {
     const actor = this.getUser(request);
+    if (request.body.password) {
+      const user = await this.userService.createUser(request.body, actor);
+      return this.created(reply, user, 'Staff onboarded successfully with credentials');
+    }
     const invite = await this.userService.inviteUser(request.body, actor);
     return this.created(reply, invite, 'User invitation sent successfully');
   }

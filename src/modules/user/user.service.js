@@ -82,10 +82,12 @@ class UserService extends BaseService {
     // 1. Quota check: Enforce Organization user subscription limits
     await this._verifyUserQuota(actor.organizationId);
 
+    const emailLower = data.email.toLowerCase().trim();
+
     // 2. Check for duplicate email
-    const exists = await this.userRepository.findByEmail(data.email);
+    const exists = await this.userRepository.findByEmail(emailLower);
     if (exists) {
-      throw new ConflictError(`User with email '${data.email}' already exists`);
+      throw new ConflictError(`User with email '${emailLower}' already exists`);
     }
 
     // Hash password
@@ -107,8 +109,28 @@ class UserService extends BaseService {
       targetBranchId = actor.branchId;
     }
 
+    let firstName = data.firstName;
+    let lastName = data.lastName;
+    if (!firstName && data.name) {
+      const parts = data.name.trim().split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ') || parts[0];
+    }
+    if (!lastName && firstName) {
+      lastName = firstName;
+    }
+
+    // Clean up any pending invitation for this email
+    const pendingInvite = await this.userInvitationRepository.findPendingByEmail(emailLower);
+    if (pendingInvite) {
+      await this.userInvitationRepository.update(pendingInvite.id, { status: 'accepted' });
+    }
+
     const user = await this.userRepository.create({
       ...data,
+      firstName: firstName || 'Staff',
+      lastName: lastName || 'Member',
+      email: emailLower,
       password: hashedPassword,
       organizationId: actor.organizationId,
       tenantId: actor.tenantId || data.tenantId || null,
@@ -124,7 +146,7 @@ class UserService extends BaseService {
       entityId: user.id,
       userId: actor.id,
       newValues: { email: user.email, roleId: user.roleId, status: user.status },
-      description: `User '${user.email}' created directly`,
+      description: `User '${user.email}' created directly (staff onboarded)`,
     });
 
     return user;

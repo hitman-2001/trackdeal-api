@@ -25,6 +25,7 @@ const {
   updateBranchSchema,
 } = require("../branch/branch.validation");
 const {
+  createUserSchema,
   inviteUserSchema,
   assignRoleSchema,
   transferBranchSchema,
@@ -153,6 +154,11 @@ async function settingsRoutes(fastify, opts) {
     preHandler: [authorize(PERMISSIONS.USERS_READ)],
     handler: userController.list.bind(userController),
   });
+  fastify.post("/users", {
+    preHandler: [authorize(PERMISSIONS.USERS_CREATE)],
+    schema: { body: createUserSchema },
+    handler: userController.create.bind(userController),
+  });
   fastify.post("/users/invite", {
     preHandler: [authorize(PERMISSIONS.USERS_CREATE)],
     schema: { body: inviteUserSchema },
@@ -161,6 +167,10 @@ async function settingsRoutes(fastify, opts) {
   fastify.post("/users/:id/suspend", {
     preHandler: [authorize(PERMISSIONS.USERS_DEACTIVATE)],
     handler: userController.suspend.bind(userController),
+  });
+  fastify.post("/users/:id/activate", {
+    preHandler: [authorize(PERMISSIONS.USERS_ACTIVATE)],
+    handler: userController.activate.bind(userController),
   });
   fastify.post("/users/:id/branch", {
     preHandler: [authorize(PERMISSIONS.USERS_UPDATE)],

@@ -187,7 +187,7 @@ async function taskRoutes(fastify, opts) {
   fastify.get(
     "/",
     {
-      preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+      preHandler: [requirePermission(PERMISSIONS.TASKS_READ)],
       schema: {
         tags: ["Tasks"],
         summary: "List tasks",
@@ -221,7 +221,7 @@ async function taskRoutes(fastify, opts) {
   fastify.get(
     "/:id",
     {
-      preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+      preHandler: [requirePermission(PERMISSIONS.TASKS_READ)],
       schema: {
         tags: ["Tasks"],
         summary: "Get task by ID",
@@ -242,7 +242,7 @@ async function taskRoutes(fastify, opts) {
   fastify.post(
     "/",
     {
-      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      preHandler: [requirePermission(PERMISSIONS.TASKS_CREATE)],
       schema: {
         tags: ["Tasks"],
         summary: "Create task",
@@ -262,7 +262,7 @@ async function taskRoutes(fastify, opts) {
   fastify.put(
     "/:id",
     {
-      preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+      preHandler: [requirePermission(PERMISSIONS.TASKS_UPDATE)],
       schema: {
         tags: ["Tasks"],
         summary: "Update task",
@@ -284,7 +284,7 @@ async function taskRoutes(fastify, opts) {
   fastify.delete(
     "/:id",
     {
-      preHandler: [requirePermission(PERMISSIONS.LEADS_DELETE)],
+      preHandler: [requirePermission(PERMISSIONS.TASKS_DELETE)],
       schema: {
         tags: ["Tasks"],
         summary: "Delete task",
