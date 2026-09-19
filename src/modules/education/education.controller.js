@@ -14,6 +14,11 @@ class EducationController extends BaseController {
     return this.ok(reply, data);
   }
 
+  async analytics(request, reply) {
+    const data = await this.educationService.getAnalytics(request.query, this.getUser(request));
+    return this.ok(reply, data);
+  }
+
   async listClasses(request, reply) {
     const query = this.getPagination(request.query);
     const result = await this.educationService.listClasses({ ...request.query, ...query }, this.getUser(request));
@@ -49,6 +54,11 @@ class EducationController extends BaseController {
   async updateStudent(request, reply) {
     const item = await this.educationService.updateStudent(request.params.id, request.body, this.getUser(request));
     return this.ok(reply, item, 'Student updated successfully');
+  }
+
+  async removeStudent(request, reply) {
+    await this.educationService.removeStudent(request.params.id, this.getUser(request));
+    return this.noContent(reply);
   }
 
   async getLead(request, reply) {

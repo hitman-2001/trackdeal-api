@@ -42,20 +42,26 @@ class AuditService {
    * @param {object} data
    */
   async saveDirect(data) {
+    const mongoose = require('mongoose');
     return tenantContext.run({ isSystemOverride: true }, async () => {
+      let entityId = data.entityId;
+      if (!entityId || !mongoose.isValidObjectId(entityId)) {
+        entityId = new mongoose.Types.ObjectId();
+      }
+
       const auditLog = new AuditLog({
         organizationId: data.organizationId,
         branchId: data.branchId || null,
         action: data.action,
-        entity: data.entity,
-        entityId: data.entityId,
-        userId: data.userId,
+        entity: data.entity || 'System',
+        entityId,
+        userId: mongoose.isValidObjectId(data.userId) ? data.userId : null,
         userSnapshot: data.userSnapshot,
         oldValues: data.oldValues,
         newValues: data.newValues,
         description: data.description,
         requestMetadata: data.requestMetadata,
-        module: data.module,
+        module: data.module || data.entity || 'General',
       });
 
       await auditLog.save();
@@ -86,18 +92,54 @@ class AuditService {
    * @param {object} filters
    * @param {object} pagination
    */
-  async queryLogs(filters, pagination) {
+  async queryLogs(filters = {}, pagination = {}) {
     const query = {};
+
+    const orgId = filters.organizationId || tenantContext.getOrganizationId();
+    if (orgId) {
+      query.organizationId = orgId;
+    }
 
     if (filters.entity) query.entity = filters.entity;
     if (filters.entityId) query.entityId = filters.entityId;
     if (filters.userId) query.userId = filters.userId;
-    if (filters.action) query.action = filters.action;
-    if (filters.module) query.module = filters.module;
+    if (filters.action) {
+      query.action = new RegExp(String(filters.action).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    }
+    if (filters.module) {
+      query.module = new RegExp(`^${String(filters.module).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    }
+    if (filters.user) {
+      const userRx = new RegExp(String(filters.user).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$or = [
+        { 'userSnapshot.name': userRx },
+        { 'userSnapshot.email': userRx },
+      ];
+    }
+    if (filters.search) {
+      const rx = new RegExp(String(filters.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const searchOr = [
+        { action: rx },
+        { description: rx },
+        { entity: rx },
+        { 'userSnapshot.name': rx },
+        { 'userSnapshot.email': rx },
+      ];
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: searchOr }];
+        delete query.$or;
+      } else {
+        query.$or = searchOr;
+      }
+    }
     if (filters.startDate || filters.endDate) {
       query.createdAt = {};
       if (filters.startDate) query.createdAt.$gte = new Date(filters.startDate);
-      if (filters.endDate) query.createdAt.$lte = new Date(filters.endDate);
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
     }
 
     return this.auditRepository.paginate(query, {

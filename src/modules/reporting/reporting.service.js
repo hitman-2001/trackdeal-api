@@ -141,7 +141,125 @@ class ReportingService extends BaseService {
       },
     ]);
 
+    // 7. Dynamic 6-Month Lead & Deal Trend
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const trendMonths = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      trendMonths.push({
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        label: monthNames[d.getMonth()],
+        value: 0,
+      });
+    }
+    const trendStartDate = new Date(trendMonths[0].year, trendMonths[0].month - 1, 1);
+
+    const leadTrendAgg = await Lead.aggregate([
+      { $match: { ...leadFilter, createdAt: { $gte: trendStartDate } } },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    for (const r of leadTrendAgg) {
+      const m = trendMonths.find((item) => item.year === r._id.year && item.month === r._id.month);
+      if (m) m.value = r.count;
+    }
+
+    const trendChartData = trendMonths.map((m) => ({ label: m.label, value: m.value }));
+
+    // 8. Dynamic Funnel Chart Data
+    const stageAgg = await Lead.aggregate([
+      { $match: leadFilter },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+    const stageMap = {};
+    for (const s of stageAgg) {
+      if (s._id) stageMap[String(s._id).toLowerCase()] = s.count;
+    }
+    const totalLeads = leadCount;
+    const contactedLeads = totalLeads - (stageMap.new || 0);
+    const inNegotiation = (stageMap.site_visit || 0) + (stageMap.negotiation || 0) + (stageMap.offer_accepted || 0) + (stageMap.converted || 0);
+    const convertedDeals = convertedLeadCount;
+
+    const funnelChartData = [
+      { label: '1. Pipeline Opportunities', value: totalLeads, percent: 100 },
+      { label: '2. Contacted & Engaged', value: contactedLeads, percent: totalLeads > 0 ? Math.round((contactedLeads / totalLeads) * 100) : 0 },
+      { label: '3. Site Visits & Offers', value: inNegotiation, percent: totalLeads > 0 ? Math.round((inNegotiation / totalLeads) * 100) : 0 },
+      { label: '4. Closed Transactions', value: convertedDeals, percent: totalLeads > 0 ? Math.round((convertedDeals / totalLeads) * 100) : 0 },
+    ];
+
+    // 9. Dynamic Source Breakdown
+    const sourcesAgg = await Lead.aggregate([
+      { $match: leadFilter },
+      { $group: { _id: { $ifNull: ['$source', 'Direct Referral'] }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]);
+    const sourceColors = ['#4f46e5', '#0284c7', '#059669', '#64748b', '#d97706', '#7c3aed'];
+    const totalSources = sourcesAgg.reduce((acc, curr) => acc + curr.count, 0) || 1;
+    const sourceChartData = sourcesAgg.map((s, idx) => ({
+      label: s._id,
+      value: s.count,
+      percent: Math.round((s.count / totalSources) * 100),
+      color: sourceColors[idx % sourceColors.length],
+    }));
+
+    // 10. Dynamic Agent Performance
+    const counselorPerformanceData = brokerRankings.map((b) => ({
+      label: b.name || b.email,
+      value: b.dealsClosed || 0,
+      target: Math.max((b.dealsClosed || 0) + 3, 5),
+      color: '#4f46e5',
+    }));
+
+    // 11. Dynamic Strategic Insights
+    const topLeadSource = sourceChartData[0]?.label || 'Referrals';
+    const topSourceShare = sourceChartData[0]?.percent || 0;
+    const strategicInsights = [
+      {
+        type: 'growth',
+        title: `Primary Opportunity Sourcing: ${topLeadSource}`,
+        description: `${topLeadSource} accounts for ${topSourceShare}% of all customer inquiries. Continue incentivizing direct client partner channels.`,
+      },
+      {
+        type: 'pipeline',
+        title: `Active Negotiation Velocity`,
+        description: `Currently ${activeDeals} deals are in active documentation and negotiation stages representing significant upcoming commission settlement.`,
+      },
+      {
+        type: 'portfolio',
+        title: `Market Listing Coverage: ${propertyCount} Active Units`,
+        description: `Your agency manages ${propertyCount} active verified properties across all designated branches.`,
+      },
+      {
+        type: 'revenue',
+        title: `Settled Brokerage Volume`,
+        description: `Total earned brokerage settled through platform accounting stands at ₹${totalRevenue.toLocaleString('en-IN')}.`,
+      },
+    ];
+
     return {
+      summaryMetrics: {
+        totalInquiries: leadCount,
+        confirmedConversions: convertedLeadCount,
+        conversionRate,
+        pipelineInProgress: activeDeals,
+        inProgressRate: leadCount > 0 ? Math.round((activeDeals / leadCount) * 100) : 0,
+        inquiriesGrowth: 0,
+        priorPeriodInquiries: 0,
+        todayInquiries: 0,
+      },
+      trendChartData,
+      funnelChartData,
+      sourceChartData: sourceChartData.length > 0 ? sourceChartData : [{ label: 'Direct Referral', value: leadCount, percent: 100, color: '#3b82f6' }],
+      counselorPerformanceData: counselorPerformanceData.length > 0 ? counselorPerformanceData : [{ label: 'Senior Broker', value: convertedLeadCount, target: Math.max(leadCount, 1), color: '#10b981' }],
+      strategicInsights,
       leads: {
         total: leadCount,
         converted: convertedLeadCount,

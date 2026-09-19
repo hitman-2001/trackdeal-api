@@ -130,7 +130,7 @@ class LeadService extends BaseService {
     };
 
     if (
-      actor.role === ROLES.AGENT &&
+      (actor.role === ROLES.AGENT || actor.role === 'staff' || actor.role === 'counselor') &&
       !actor.permissions?.includes("leads.view_all")
     ) {
       orgFilter.$or = [

@@ -26,6 +26,12 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.summary(req, reply),
   });
 
+  fastify.get('/analytics', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    schema: { tags: ['Education'], summary: 'Education admissions and reporting analytics' },
+    handler: (req, reply) => controller.analytics(req, reply),
+  });
+
   fastify.get('/classes', {
     preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
     schema: { tags: ['Education'], summary: 'List classes' },
@@ -66,6 +72,12 @@ async function educationRoutes(fastify) {
     preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
     schema: { tags: ['Education'], summary: 'Update student' },
     handler: (req, reply) => controller.updateStudent(req, reply),
+  });
+
+  fastify.delete('/students/:id', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_DELETE)],
+    schema: { tags: ['Education'], summary: 'Delete student' },
+    handler: (req, reply) => controller.removeStudent(req, reply),
   });
 
   fastify.get('/leads', {
