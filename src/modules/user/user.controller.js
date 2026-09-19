@@ -95,6 +95,16 @@ class UserController extends BaseController {
   }
 
   /**
+   * PUT /users/:id/permissions
+   */
+  async updatePermissions(request, reply) {
+    const { id } = request.params;
+    const actor = this.getUser(request);
+    const user = await this.userService.updateUserPermissions(id, request.body, actor);
+    return this.ok(reply, user, 'User permissions updated successfully');
+  }
+
+  /**
    * POST /users/:id/suspend
    */
   async suspend(request, reply) {

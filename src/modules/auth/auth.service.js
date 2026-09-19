@@ -540,6 +540,7 @@ class AuthService extends BaseService {
       email: user.email,
       role: roleName,
       permissions,
+      permissionsVersion: Number(user.permissionsVersion || 0),
       firstName: user.firstName,
       lastName: user.lastName,
       tenantId,

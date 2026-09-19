@@ -9,6 +9,7 @@ const {
   createUserSchema,
   updateUserSchema,
   assignRoleSchema,
+  updateUserPermissionsSchema,
   assignBranchSchema,
   transferBranchSchema,
   inviteUserSchema,
@@ -122,6 +123,17 @@ async function userRoutes(fastify, opts) {
       params: userIdParamSchema,
     },
     handler: controller.deactivate,
+  });
+
+  fastify.put('/:id/permissions', {
+    preHandler: [requirePermission(PERMISSIONS.USERS_UPDATE)],
+    schema: {
+      tags: ['Users'],
+      summary: 'Set user-specific permission overrides',
+      params: userIdParamSchema,
+      body: updateUserPermissionsSchema,
+    },
+    handler: controller.updatePermissions,
   });
 
   fastify.post('/:id/suspend', {

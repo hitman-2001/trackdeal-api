@@ -1,11 +1,14 @@
 'use strict';
 
+require('../user/user.model');
+const mongoose = require('mongoose');
 const { BaseService } = require('../../shared/base/BaseService');
 const {
   EducationClassRepository,
   StudentRepository,
   EducationLeadRepository,
 } = require('./education.repository');
+const { LeadFollowUpRepository } = require('../lead/lead.repository');
 const { BusinessRuleError, NotFoundError, ForbiddenError } = require('../../shared/errors');
 const { isEducationVertical } = require('../tenant/tenant.constants');
 
@@ -15,6 +18,7 @@ class EducationService extends BaseService {
     this.classRepository = deps.classRepository || new EducationClassRepository();
     this.studentRepository = deps.studentRepository || new StudentRepository();
     this.leadRepository = deps.leadRepository || new EducationLeadRepository();
+    this.followUpRepository = deps.followUpRepository || new LeadFollowUpRepository();
   }
 
   _assertEducation(actor) {
@@ -25,17 +29,212 @@ class EducationService extends BaseService {
 
   async getSummary(actor) {
     this._assertEducation(actor);
-    const [leads, students, classes, enrolled] = await Promise.all([
+    const orgId = actor.organizationId;
+    const orgObjectId = (orgId && mongoose.Types.ObjectId.isValid(orgId))
+      ? new mongoose.Types.ObjectId(orgId)
+      : orgId;
+
+    const now = new Date();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const [
+      leads,
+      students,
+      classes,
+      enrolled,
+      newLeadsToday,
+      stageCounts,
+      unassignedLeads,
+      staleLeads,
+    ] = await Promise.all([
       this.leadRepository.count({ isDeleted: false, tenantVertical: 'education' }),
       this.studentRepository.count({ isDeleted: false }),
       this.classRepository.count({ isDeleted: false }),
-      this.leadRepository.count({ isDeleted: false, tenantVertical: 'education', status: 'enrolled' }),
+      this.leadRepository.count({
+        isDeleted: false,
+        tenantVertical: 'education',
+        status: { $in: ['enrolled', 'converted'] },
+      }),
+      this.leadRepository.count({
+        isDeleted: false,
+        tenantVertical: 'education',
+        createdAt: { $gte: startOfToday },
+      }),
+      this.leadRepository.model.aggregate([
+        {
+          $match: {
+            $or: [
+              { organizationId: orgObjectId },
+              { organizationId: orgId },
+            ],
+            isDeleted: false,
+            tenantVertical: 'education',
+          },
+        },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      this.leadRepository.count({
+        isDeleted: false,
+        tenantVertical: 'education',
+        assignedTo: null,
+      }),
+      this.leadRepository.count({
+        isDeleted: false,
+        tenantVertical: 'education',
+        updatedAt: { $lt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+        status: { $nin: ['enrolled', 'converted', 'lost'] },
+      }),
     ]);
+
+    const stageBreakdown = {
+      new: 0,
+      assigned: 0,
+      contacted: 0,
+      follow_up: 0,
+      meeting_scheduled: 0,
+      qualified: 0,
+      application_trial: 0,
+      converted: 0,
+      on_hold: 0,
+      lost: 0,
+    };
+    for (const s of stageCounts) {
+      if (s._id) {
+        const key = String(s._id).toLowerCase();
+        if (key === 'enrolled') {
+          stageBreakdown.converted = (stageBreakdown.converted || 0) + s.count;
+        } else if (stageBreakdown[key] !== undefined) {
+          stageBreakdown[key] = s.count;
+        } else {
+          stageBreakdown[key] = s.count;
+        }
+      }
+    }
+
+    // 2. Fetch scheduled follow-ups & reminders
+    const rawFollowUps = await this.followUpRepository.findMany(
+      { isDeleted: false, status: { $ne: 'cancelled' } },
+      {
+        sort: { scheduledAt: 1 },
+        limit: 50,
+        populate: [
+          {
+            path: 'leadId',
+            select: 'firstName lastName mobile email parentName parentMobile status leadTemperature classInterestId tenantVertical',
+            populate: { path: 'classInterestId', select: 'name code' },
+          },
+          { path: 'assignedTo', select: 'firstName lastName email' },
+        ],
+      }
+    );
+
+    const leadsWithFollowUp = await this.leadRepository.findMany(
+      {
+        isDeleted: false,
+        tenantVertical: 'education',
+        nextFollowUpAt: { $ne: null },
+      },
+      {
+        sort: { nextFollowUpAt: 1 },
+        limit: 30,
+        populate: [
+          { path: 'classInterestId', select: 'name code' },
+          { path: 'assignedTo', select: 'firstName lastName email' },
+        ],
+      }
+    );
+
+    const seenLeadIds = new Set();
+    const followUps = [];
+
+    for (const f of rawFollowUps) {
+      if (f.leadId) {
+        // Only include if it's an education lead
+        if (f.leadId.tenantVertical && f.leadId.tenantVertical !== 'education') {
+          continue;
+        }
+        const lId = String(f.leadId._id || f.leadId);
+        seenLeadIds.add(lId);
+        const sched = new Date(f.scheduledAt);
+        const isOverdue = f.status === 'scheduled' && sched < now;
+        const isToday = sched >= startOfToday && sched <= endOfToday;
+        const isUpcoming = sched > endOfToday;
+
+        followUps.push({
+          _id: String(f._id),
+          leadId: lId,
+          lead: f.leadId,
+          studentName: `${f.leadId.firstName || ''} ${f.leadId.lastName || ''}`.trim() || 'Student Lead',
+          parentName: f.leadId.parentName || '',
+          contactNumber: f.leadId.parentMobile || f.leadId.mobile || '',
+          studentMobile: f.leadId.mobile || '',
+          className: f.leadId.classInterestId?.name || '',
+          scheduledAt: f.scheduledAt,
+          type: f.type || 'call',
+          notes: f.notes || '',
+          status: f.status || 'scheduled',
+          assignedTo: f.assignedTo,
+          isOverdue,
+          isToday,
+          isUpcoming,
+        });
+      }
+    }
+
+    for (const l of leadsWithFollowUp) {
+      const lId = String(l._id);
+      if (!seenLeadIds.has(lId)) {
+        const sched = new Date(l.nextFollowUpAt);
+        const isOverdue = sched < now;
+        const isToday = sched >= startOfToday && sched <= endOfToday;
+        const isUpcoming = sched > endOfToday;
+
+        followUps.push({
+          _id: `fu-${lId}`,
+          leadId: lId,
+          lead: l,
+          studentName: `${l.firstName || ''} ${l.lastName || ''}`.trim() || 'Student Lead',
+          parentName: l.parentName || '',
+          contactNumber: l.parentMobile || l.mobile || '',
+          studentMobile: l.mobile || '',
+          className: l.classInterestId?.name || '',
+          scheduledAt: l.nextFollowUpAt,
+          type: l.lastActivityType || 'call',
+          notes: l.qualification?.notesRemarks || l.notesRemarks || 'Scheduled follow-up',
+          status: 'scheduled',
+          assignedTo: l.assignedTo,
+          isOverdue,
+          isToday,
+          isUpcoming,
+        });
+      }
+    }
+
+    followUps.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+
+    const overdueFollowUps = followUps.filter((f) => f.isOverdue).length;
+    const todayFollowUps = followUps.filter((f) => f.isToday).length;
+    const pendingFollowUps = followUps.filter((f) => f.status === 'scheduled').length;
+
     return {
       totalLeads: leads,
       totalStudents: students,
       totalClasses: classes,
       enrolledLeads: enrolled,
+      newLeadsToday,
+      leadsContacted: stageBreakdown.contacted || 0,
+      callsScheduled: followUps.filter((f) => f.type === 'call').length,
+      meetingsToday: followUps.filter((f) => f.type === 'meeting' && f.isToday).length,
+      pendingFollowUps,
+      overdueFollowUps,
+      todayFollowUps,
+      unassignedLeads,
+      staleLeads,
+      stageBreakdown,
+      followUps,
     };
   }
 
@@ -190,7 +389,14 @@ class EducationService extends BaseService {
       page: query.page,
       limit: query.limit,
       sort: { createdAt: -1 },
-      populate: { path: 'classInterestId', select: 'name code subject' },
+      populate: [
+        { path: 'classInterestId', select: 'name code subject' },
+        {
+          path: 'assignedTo',
+          select: 'firstName lastName email',
+          populate: { path: 'roleId', select: 'name code' },
+        },
+      ],
     });
     return {
       data: result.data,
@@ -235,9 +441,14 @@ class EducationService extends BaseService {
       throw new ForbiddenError('This lead belongs to the real-estate workspace.');
     }
     const patch = { updatedBy: actor.id };
-    ['firstName', 'lastName', 'mobile', 'email', 'source', 'parentName', 'parentMobile', 'status', 'assignedTo', 'classInterestId'].forEach((key) => {
+    ['firstName', 'lastName', 'mobile', 'email', 'source', 'parentName', 'parentMobile', 'status', 'assignedTo', 'classInterestId', 'leadTemperature'].forEach((key) => {
       if (data[key] !== undefined) patch[key] = data[key];
     });
+    if (data.customerFeedback !== undefined) patch.customerFeedback = data.customerFeedback;
+    if (data.notesRemarks !== undefined) patch.notesRemarks = data.notesRemarks;
+    if (data.nextFollowUpAt !== undefined) {
+      patch.nextFollowUpAt = data.nextFollowUpAt ? new Date(data.nextFollowUpAt) : null;
+    }
     if (data.notes !== undefined) {
       patch.requirements = { ...(lead.requirements || {}), notes: data.notes };
     }

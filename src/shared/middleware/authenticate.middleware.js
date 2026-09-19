@@ -51,6 +51,10 @@ async function authenticate(request, reply) {
     throw new UnauthorizedError('Your account has been deactivated. Contact your administrator.');
   }
 
+  if (Number(decoded.permissionsVersion || 0) !== Number(user.permissionsVersion || 0)) {
+    throw new UnauthorizedError('Your access permissions were updated. Refresh your session to continue.');
+  }
+
   // Validate parent organization subscription status (System Admins are exempt)
   const { isPlatformAdmin } = require('../../modules/tenant/tenant.constants');
   const isSystemAdmin = isPlatformAdmin(decoded.role) || isPlatformAdmin(user.role);

@@ -75,6 +75,26 @@ const assignRoleSchema = {
   },
 };
 
+const updateUserPermissionsSchema = {
+  type: 'object',
+  required: ['added', 'removed'],
+  additionalProperties: false,
+  properties: {
+    added: {
+      type: 'array',
+      maxItems: 200,
+      uniqueItems: true,
+      items: { type: 'string', minLength: 3, maxLength: 100 },
+    },
+    removed: {
+      type: 'array',
+      maxItems: 200,
+      uniqueItems: true,
+      items: { type: 'string', minLength: 3, maxLength: 100 },
+    },
+  },
+};
+
 const assignBranchSchema = {
   type: 'object',
   required: ['branchId'],
@@ -172,6 +192,7 @@ module.exports = {
   createUserSchema,
   updateUserSchema,
   assignRoleSchema,
+  updateUserPermissionsSchema,
   assignBranchSchema,
   transferBranchSchema,
   inviteUserSchema,

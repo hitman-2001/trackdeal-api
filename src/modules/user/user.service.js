@@ -6,6 +6,7 @@ const { NotFoundError, ConflictError, BusinessRuleError, ForbiddenError } = requ
 const { AUDIT_ACTIONS } = require('../../shared/constants/app.constants');
 const { tenantContext } = require('../../shared/context/tenant-context');
 const { UserInvitationRepository } = require('./user-invitation.repository');
+const { PermissionRepository } = require('../authorization/permission.repository');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
@@ -18,6 +19,7 @@ class UserService extends BaseService {
     super(deps);
     this.userRepository = deps.userRepository || new UserRepository();
     this.userInvitationRepository = deps.userInvitationRepository || new UserInvitationRepository();
+    this.permissionRepository = deps.permissionRepository || new PermissionRepository();
   }
 
   /**
@@ -266,6 +268,78 @@ class UserService extends BaseService {
     return updated;
   }
 
+  /**
+   * Replace the explicit permissions added to and removed from a user's role.
+   * Only an organization administrator can delegate permissions within their
+   * own organization. The role remains the user's baseline access profile.
+   */
+  async updateUserPermissions(id, permissionOverrides, actor) {
+    const { ROLES } = require('../../shared/constants/roles-permissions.constants');
+    if (actor.role !== ROLES.ORG_ADMIN) {
+      throw new ForbiddenError('Only an Organization Admin can manage user-specific permissions.');
+    }
+    if (String(id) === String(actor.id)) {
+      throw new BusinessRuleError('You cannot modify your own permissions.');
+    }
+
+    const user = await this.userRepository.findByIdOrFail(id, 'User');
+    this._enforceBranchWriteIsolation(user, actor);
+
+    const { Role } = require('../authorization/role.model');
+    const targetRole = await tenantContext.run({ isSystemOverride: true }, () =>
+      Role.findById(user.roleId).select('code').lean()
+    );
+    if (targetRole?.code === ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError('Organization Admins cannot modify a Super Admin account.');
+    }
+
+    const normalize = (keys) => [...new Set((keys || []).map((key) => String(key).toLowerCase().trim()))];
+    const added = normalize(permissionOverrides.added);
+    const removed = normalize(permissionOverrides.removed);
+    const conflictingKeys = added.filter((key) => removed.includes(key));
+    if (conflictingKeys.length) {
+      throw new BusinessRuleError('A permission cannot be both granted and denied for the same user.', 'CONFLICTING_PERMISSION_OVERRIDES');
+    }
+
+    const requestedKeys = [...added, ...removed];
+    const validPermissions = await this.permissionRepository.findByKeys(requestedKeys);
+    const validKeys = new Set(validPermissions.map((permission) => permission.permissionKey));
+    const invalidKeys = requestedKeys.filter((key) => !validKeys.has(key));
+    if (invalidKeys.length) {
+      throw new BusinessRuleError(`Cannot assign unknown permissions: ${invalidKeys.join(', ')}`, 'INVALID_PERMISSIONS_ASSIGNED');
+    }
+
+    const actorPermissions = new Set(actor.permissions || []);
+    if (!actorPermissions.has('*')) {
+      const unauthorizedKeys = requestedKeys.filter((key) => !actorPermissions.has(key));
+      if (unauthorizedKeys.length) {
+        throw new ForbiddenError(`You cannot delegate permissions you do not possess: ${unauthorizedKeys.join(', ')}`);
+      }
+    }
+
+    const oldOverrides = {
+      added: user.permissionOverrides?.added || [],
+      removed: user.permissionOverrides?.removed || [],
+    };
+    const updated = await this.userRepository.update(id, {
+      permissionOverrides: { added, removed },
+      permissionsVersion: Number(user.permissionsVersion || 0) + 1,
+      updatedBy: actor.id,
+    });
+
+    await this.logAudit({
+      action: AUDIT_ACTIONS.UPDATE,
+      entity: 'User',
+      entityId: id,
+      userId: actor.id,
+      oldValues: { permissionOverrides: oldOverrides },
+      newValues: { permissionOverrides: { added, removed } },
+      description: `Updated user-specific permissions for '${user.email}'`,
+    });
+
+    return updated;
+  }
+
   async suspendUser(id, actor) {
     if (String(id) === String(actor.id)) {
       throw new BusinessRuleError('You cannot suspend your own account');
@@ -301,7 +375,11 @@ class UserService extends BaseService {
     // Privilege escalation protection
     await this._validateUserRoleAssignment(roleId, actor);
 
-    const updated = await this.userRepository.update(id, { roleId, updatedBy: actor.id });
+    const updated = await this.userRepository.update(id, {
+      roleId,
+      permissionsVersion: Number(user.permissionsVersion || 0) + 1,
+      updatedBy: actor.id,
+    });
 
     await this.logAudit({
       action: AUDIT_ACTIONS.UPDATE,

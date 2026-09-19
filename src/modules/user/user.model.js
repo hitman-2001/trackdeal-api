@@ -61,6 +61,9 @@ const userSchema = new mongoose.Schema(
       added: [{ type: String }],
       removed: [{ type: String }],
     },
+    // Incremented whenever an administrator changes a user's effective access.
+    // This lets authentication reject stale access tokens immediately.
+    permissionsVersion: { type: Number, default: 0, required: true },
 
     // Status
     status: {
