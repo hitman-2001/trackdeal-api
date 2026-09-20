@@ -112,6 +112,62 @@ class LeadService extends BaseService {
   }
 
   /**
+   * Check whether an actor has elevated lead visibility across the entire organization.
+   * Elevated roles: super_admin, system_admin, org_admin, branch_manager, manager.
+   * Or any role possessing leads.view_all or wildcard '*' permissions.
+   * @private
+   */
+  _isElevatedLeadUser(actor) {
+    if (!actor) return false;
+    const roleCode = String(actor.role || "").toLowerCase().trim();
+    const ELEVATED_ROLES = [
+      "super_admin",
+      "system_admin",
+      "org_admin",
+      "organization_admin",
+      "branch_manager",
+      "manager",
+    ];
+    if (ELEVATED_ROLES.includes(roleCode)) return true;
+    const permissions = actor.permissions || [];
+    return (
+      permissions.includes("*") ||
+      permissions.includes("leads.view_all") ||
+      permissions.includes("leads:view_all")
+    );
+  }
+
+  /**
+   * Check whether a specific lead is assigned to the authenticated actor.
+   * @private
+   */
+  _isLeadAssignedToActor(lead, actor) {
+    if (!actor) return false;
+    const actorId = String(actor.id || actor._id || "");
+    if (!actorId) return false;
+
+    // Direct assignment check
+    const assignedId = lead.assignedTo?._id
+      ? String(lead.assignedTo._id)
+      : lead.assignedTo
+      ? String(lead.assignedTo)
+      : null;
+    if (assignedId && assignedId === actorId) return true;
+
+    // Transferred lead assignment check
+    if (Array.isArray(lead.transfers)) {
+      const matchTransfer = lead.transfers.some(
+        (t) =>
+          String(t.toUserId || "") === actorId &&
+          String(t.toOrganizationId || "") === String(actor.organizationId || "")
+      );
+      if (matchTransfer) return true;
+    }
+
+    return false;
+  }
+
+  /**
    * List all leads within tenant context (Own Leads + Transferred Leads).
    */
   async listLeads(query, actor) {
@@ -129,14 +185,13 @@ class LeadService extends BaseService {
       isDeleted: { $ne: true },
     };
 
-    if (
-      (actor.role === ROLES.AGENT || actor.role === 'staff' || actor.role === 'counselor') &&
-      !actor.permissions?.includes("leads.view_all")
-    ) {
+    // Strict Scoping: If user is not an administrator or manager, they can ONLY see leads assigned to them.
+    if (!this._isElevatedLeadUser(actor)) {
+      const actorId = actor.id || actor._id;
       orgFilter.$or = [
-        { organizationId: actor.organizationId, assignedTo: actor.id },
-        { "transfers.toOrganizationId": actor.organizationId, "transfers.toUserId": actor.id },
-        { "transfers.toOrganizationId": actor.organizationId, assignedTo: actor.id },
+        { organizationId: actor.organizationId, assignedTo: actorId },
+        { "transfers.toOrganizationId": actor.organizationId, "transfers.toUserId": actorId },
+        { "transfers.toOrganizationId": actor.organizationId, assignedTo: actorId },
       ];
     }
 
@@ -204,6 +259,9 @@ class LeadService extends BaseService {
 
     // 1. Own Lead: user belongs to the same organization
     if (actor && lead.organizationId && lead.organizationId.toString() === actor.organizationId.toString()) {
+      if (!this._isElevatedLeadUser(actor) && !this._isLeadAssignedToActor(lead, actor)) {
+        throw new ForbiddenError("You do not have permission to access this lead");
+      }
       return lead;
     }
 
@@ -212,6 +270,9 @@ class LeadService extends BaseService {
       lead.transfers.some((t) => t.toOrganizationId?.toString() === actor.organizationId.toString());
 
     if (isTransferredToMe) {
+      if (!this._isElevatedLeadUser(actor) && !this._isLeadAssignedToActor(lead, actor)) {
+        throw new ForbiddenError("You do not have permission to access this lead");
+      }
       return this._sanitizeTransferredLead(lead, actor);
     }
 
@@ -468,6 +529,11 @@ class LeadService extends BaseService {
   async updateLead(id, data, actor) {
     const lead = await this.leadRepository.findByIdOrFail(id, "Lead");
 
+    // Staff scoping check: staff can only update leads assigned to them
+    if (!this._isElevatedLeadUser(actor) && !this._isLeadAssignedToActor(lead, actor)) {
+      throw new ForbiddenError("You can only modify leads assigned to you");
+    }
+
     // Business rule: Won lead cannot be modified unless bypass role
     if (
       lead.status === "won" &&
@@ -688,6 +754,11 @@ class LeadService extends BaseService {
    */
   async changeStage(id, status, lostReason, lostNotes, actor) {
     const lead = await this.leadRepository.findByIdOrFail(id, "Lead");
+
+    // Staff scoping check: staff can only change stage for leads assigned to them
+    if (!this._isElevatedLeadUser(actor) && !this._isLeadAssignedToActor(lead, actor)) {
+      throw new ForbiddenError("You can only modify leads assigned to you");
+    }
 
     if (lead.status === status) {
       return lead; // Noop
@@ -989,6 +1060,13 @@ class LeadService extends BaseService {
       lead.lastActivityAt = activityDate;
       if (activityData.nextFollowUpAt) {
         lead.nextFollowUpAt = new Date(activityData.nextFollowUpAt);
+      } else if (activityData.nextFollowUpAt === null || activityData.clearFollowUp === true) {
+        lead.nextFollowUpAt = null;
+        const { LeadFollowUp } = require("./lead.model");
+        await LeadFollowUp.updateMany(
+          { leadId: id, status: "scheduled", organizationId: actor.organizationId, isDeleted: { $ne: true } },
+          { $set: { status: "completed", completedAt: new Date(), completedBy: actor.id } }
+        );
       }
       await lead.save();
 
@@ -1218,31 +1296,93 @@ class LeadService extends BaseService {
    */
   async updateFollowUp(leadId, followUpId, data, actor) {
     return tenantContext.run({ organizationId: actor.organizationId, branchId: actor.branchId }, async () => {
-      const { LeadFollowUp } = require("./lead.model");
-      const followUp = await LeadFollowUp.findOne({
-        _id: followUpId,
-        leadId,
-        organizationId: actor.organizationId,
-        isDeleted: { $ne: true },
-      });
+      const { LeadFollowUp, Lead } = require("./lead.model");
+      const isSynthetic = String(followUpId || "").startsWith("fu-");
 
-      if (!followUp) throw new NotFoundError("Follow-up not found");
-
-      if (data.status !== undefined) {
-        followUp.status = data.status;
-        if (data.status === "completed") {
-          followUp.completedAt = new Date();
-          followUp.completedBy = actor.id;
+      let followUp = null;
+      if (!isSynthetic) {
+        followUp = await LeadFollowUp.findOne({
+          _id: followUpId,
+          leadId,
+          organizationId: actor.organizationId,
+          isDeleted: { $ne: true },
+        });
+        if (!followUp && data.status !== "completed") {
+          throw new NotFoundError("Follow-up not found");
         }
       }
-      if (data.scheduledAt !== undefined) followUp.scheduledAt = new Date(data.scheduledAt);
-      if (data.type !== undefined) followUp.type = data.type;
-      if (data.notes !== undefined) followUp.notes = data.notes;
-      if (data.outcome !== undefined) followUp.outcome = data.outcome;
-      if (data.assignedTo !== undefined) followUp.assignedTo = data.assignedTo;
 
-      await followUp.save();
-      return followUp;
+      if (data.status === "completed") {
+        if (followUp) {
+          followUp.status = "completed";
+          followUp.completedAt = new Date();
+          followUp.completedBy = actor.id;
+          if (data.notes !== undefined) followUp.notes = data.notes;
+          if (data.outcome !== undefined) followUp.outcome = data.outcome;
+          await followUp.save();
+        }
+
+        // Also mark any other scheduled follow-ups for this lead as completed
+        await LeadFollowUp.updateMany(
+          {
+            leadId,
+            organizationId: actor.organizationId,
+            status: "scheduled",
+            isDeleted: { $ne: true },
+          },
+          {
+            $set: {
+              status: "completed",
+              completedAt: new Date(),
+              completedBy: actor.id,
+            },
+          }
+        );
+
+        // Find if there is any other future scheduled follow-up
+        const nextPending = await LeadFollowUp.findOne({
+          leadId,
+          organizationId: actor.organizationId,
+          status: "scheduled",
+          isDeleted: { $ne: true },
+          scheduledAt: { $gt: new Date() },
+        }).sort({ scheduledAt: 1 });
+
+        await Lead.updateOne(
+          { _id: leadId, organizationId: actor.organizationId },
+          { $set: { nextFollowUpAt: nextPending ? nextPending.scheduledAt : null } }
+        );
+
+        return followUp || { _id: followUpId, leadId, status: "completed" };
+      }
+
+      // If rescheduling or updating details
+      if (followUp) {
+        if (data.status !== undefined) followUp.status = data.status;
+        if (data.scheduledAt !== undefined) followUp.scheduledAt = new Date(data.scheduledAt);
+        if (data.type !== undefined) followUp.type = data.type;
+        if (data.notes !== undefined) followUp.notes = data.notes;
+        if (data.outcome !== undefined) followUp.outcome = data.outcome;
+        if (data.assignedTo !== undefined) followUp.assignedTo = data.assignedTo;
+        await followUp.save();
+
+        if (data.scheduledAt) {
+          await Lead.updateOne(
+            { _id: leadId, organizationId: actor.organizationId },
+            { $set: { nextFollowUpAt: followUp.scheduledAt } }
+          );
+        }
+        return followUp;
+      } else {
+        // Synthetic followUp rescheduling
+        if (data.scheduledAt) {
+          await Lead.updateOne(
+            { _id: leadId, organizationId: actor.organizationId },
+            { $set: { nextFollowUpAt: new Date(data.scheduledAt) } }
+          );
+        }
+        return { _id: followUpId, leadId, status: data.status || "scheduled", scheduledAt: data.scheduledAt };
+      }
     });
   }
 
@@ -1305,6 +1445,9 @@ class LeadService extends BaseService {
     if (lead.status === "lost") {
       await this.changeStage(id, "contacted", null, null, actor);
     }
+
+    lead.nextFollowUpAt = new Date(followUpData.scheduledAt);
+    await lead.save();
 
     await this.recalculateLeadScore(id);
 

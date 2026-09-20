@@ -635,6 +635,25 @@ class AuthService extends BaseService {
       throw new ConflictError('A user with this email already exists on the platform.');
     }
 
+    // Verify organization quota before creating user
+    const { Organization } = require('../organization/organization.model');
+    const org = await tenantContext.run({ isSystemOverride: true }, () =>
+      Organization.findById(invite.organizationId)
+    );
+    if (!org || org.isDeleted) {
+      throw new BusinessRuleError('Organization not found or inactive.', 'ORGANIZATION_INACTIVE');
+    }
+    const quota = org.maxUsers || org.subscription?.maxUsers || 10;
+    const currentActiveUsers = await tenantContext.run({ isSystemOverride: true }, () =>
+      User.countDocuments({ organizationId: org._id, isDeleted: false })
+    );
+    if (currentActiveUsers >= quota) {
+      throw new BusinessRuleError(
+        `Organization '${org.name}' has reached its maximum user quota (${quota} users). Please contact your administrator.`,
+        'QUOTA_EXCEEDED'
+      );
+    }
+
     const hashedPassword = await bcrypt.hash(data.password, 12);
 
     let session = null;

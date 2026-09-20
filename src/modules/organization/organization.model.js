@@ -41,6 +41,14 @@ const organizationSchema = new mongoose.Schema(
       default: 'AGENCY',
       index: true,
     },
+    subscriptionPlan: {
+      type: String,
+      default: 'agency',
+    },
+    maxUsers: {
+      type: Number,
+      default: 10,
+    },
     // The ORG_ADMIN user who created / owns this organization
     ownerId: {
       type: mongoose.Schema.Types.ObjectId,

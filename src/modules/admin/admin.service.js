@@ -247,6 +247,11 @@ class AdminService extends BaseService {
         status: 'active',
         subscriptionPlan: organizationType.toLowerCase(),
         maxUsers: Number(maxUsers) || 10,
+        subscription: {
+          plan: 'starter',
+          status: 'active',
+          maxUsers: Number(maxUsers) || 10,
+        },
         city: city || 'Pune',
         state: state || 'Maharashtra',
         country: country || 'India',
@@ -362,7 +367,11 @@ class AdminService extends BaseService {
         org.organizationType = data.organizationType || data.plan;
         org.subscriptionPlan = (data.organizationType || data.plan).toLowerCase();
       }
-      if (data.maxUsers !== undefined) org.maxUsers = Number(data.maxUsers);
+      if (data.maxUsers !== undefined) {
+        org.maxUsers = Number(data.maxUsers);
+        if (!org.subscription) org.subscription = {};
+        org.subscription.maxUsers = Number(data.maxUsers);
+      }
       if (data.phone) org.phone = data.phone;
       if (data.city) org.city = data.city;
       if (data.state) org.state = data.state;
@@ -511,6 +520,16 @@ class AdminService extends BaseService {
 
       const org = await Organization.findById(organizationId);
       if (!org || org.isDeleted) throw new NotFoundError('Organization', organizationId);
+
+      // Enforce max users quota for organization
+      const quota = org.maxUsers || org.subscription?.maxUsers || 10;
+      const currentCount = await User.countDocuments({ organizationId: org._id, isDeleted: false });
+      if (currentCount >= quota) {
+        throw new BusinessRuleError(
+          `Organization '${org.name}' has reached its maximum user quota (${quota} users). Upgrade or increase the organization quota to add more users.`,
+          'QUOTA_EXCEEDED'
+        );
+      }
 
       const roleDoc = await this._resolveRoleDoc(role);
 

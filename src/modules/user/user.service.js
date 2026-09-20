@@ -648,7 +648,10 @@ class UserService extends BaseService {
       throw new NotFoundError('Organization', organizationId);
     }
 
-    const activeUsersCount = await this.userRepository.count({ isDeleted: false });
+    const { User } = require('./user.model');
+    const activeUsersCount = await tenantContext.run({ isSystemOverride: true }, () =>
+      User.countDocuments({ organizationId, isDeleted: false })
+    );
     
     const { UserInvitation } = require('./user-invitation.model');
     const pendingInvitesCount = await tenantContext.run({ isSystemOverride: true }, () =>
@@ -659,9 +662,11 @@ class UserService extends BaseService {
       })
     );
 
-    if (activeUsersCount + pendingInvitesCount >= org.subscription.maxUsers) {
+    const quota = org.maxUsers || org.subscription?.maxUsers || 10;
+
+    if (activeUsersCount + pendingInvitesCount >= quota) {
       throw new BusinessRuleError(
-        `Subscription Limit Reached: Your current plan only allows a maximum of ${org.subscription.maxUsers} users/invites. Please upgrade your subscription.`,
+        `User limit reached: Organization '${org.name}' allows a maximum of ${quota} users/invites. Please upgrade the organization quota to add more users.`,
         'SUBSCRIPTION_LIMIT_EXCEEDED'
       );
     }

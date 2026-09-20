@@ -99,6 +99,7 @@ class OrganizationService extends BaseService {
         ...data,
         code: codeSlug,
         subscription,
+        maxUsers: subscription.maxUsers || 10,
         tenantId,
       });
     });

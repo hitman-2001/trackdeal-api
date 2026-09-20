@@ -1,7 +1,7 @@
 'use strict';
 
 const { authenticate } = require('../../shared/middleware/authenticate.middleware');
-const { requirePermission } = require('../../shared/middleware/authorize.middleware');
+const { requirePermission, requireAnyPermission } = require('../../shared/middleware/authorize.middleware');
 const { PERMISSIONS } = require('../../shared/constants/roles-permissions.constants');
 const { EducationController } = require('./education.controller');
 const { ForbiddenError } = require('../../shared/errors');
@@ -27,7 +27,15 @@ async function educationRoutes(fastify) {
   });
 
   fastify.get('/analytics', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    preHandler: [
+      requireAnyPermission([
+        PERMISSIONS.REPORTS_VIEW,
+        PERMISSIONS.REPORTS_READ,
+        PERMISSIONS.LEADS_READ,
+        'analytics.view',
+        'analytics.read',
+      ]),
+    ],
     schema: { tags: ['Education'], summary: 'Education admissions and reporting analytics' },
     handler: (req, reply) => controller.analytics(req, reply),
   });

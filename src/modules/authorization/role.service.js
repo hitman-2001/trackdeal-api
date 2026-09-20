@@ -190,6 +190,24 @@ class RoleService extends BaseService {
     // 4. Update role
     const updated = await this.roleRepository.update(id, updatePayload);
 
+    // Hardened RBAC: If permissions were updated on this role, invalidate sessions for all assigned users
+    // by incrementing their permissionsVersion. On their next request, the authentication middleware
+    // will detect the version mismatch and automatically refresh their tokens with the updated permissions.
+    if (updatePayload.permissions) {
+      const { User } = require('../user/user.model');
+      await User.updateMany(
+        {
+          $or: [
+            { roleId: role._id },
+            { role: role._id },
+            { role: role.code },
+          ],
+          isDeleted: false,
+        },
+        { $inc: { permissionsVersion: 1 } }
+      );
+    }
+
     // 5. Audit Logging
     await this.logAudit({
       action: AUDIT_ACTIONS.UPDATE,
@@ -222,7 +240,10 @@ class RoleService extends BaseService {
 
     // 2. Safeguard: Role cannot be deleted if assigned to active users
     const { User } = require('../user/user.model');
-    const userCount = await User.countDocuments({ role: id, isDeleted: false });
+    const userCount = await User.countDocuments({
+      $or: [{ roleId: id }, { role: id }],
+      isDeleted: false,
+    });
     if (userCount > 0) {
       throw new BusinessRuleError(
         `Cannot delete role: it is currently assigned to ${userCount} active users.`,
@@ -334,7 +355,10 @@ class RoleService extends BaseService {
 
     // 2. Safeguard: Cannot deactivate if assigned to active users
     const { User } = require('../user/user.model');
-    const userCount = await User.countDocuments({ role: id, isDeleted: false });
+    const userCount = await User.countDocuments({
+      $or: [{ roleId: id }, { role: id }],
+      isDeleted: false,
+    });
     if (userCount > 0) {
       throw new BusinessRuleError(
         `Cannot deactivate role: it is currently assigned to ${userCount} active users.`,

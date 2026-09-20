@@ -47,7 +47,7 @@ class UserRepository extends BaseRepository {
    * @returns {Promise<object>}
    */
   async findByRole(roleId, pagination = {}) {
-    return this.paginate({ role: roleId, isActive: true }, pagination);
+    return this.paginate({ $or: [{ roleId }, { role: roleId }], isActive: true }, pagination);
   }
 
   /**

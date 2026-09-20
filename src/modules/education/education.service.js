@@ -129,7 +129,7 @@ class EducationService extends BaseService {
 
     // 2. Fetch scheduled follow-ups & reminders
     const rawFollowUps = await this.followUpRepository.findMany(
-      { isDeleted: false, status: { $ne: 'cancelled' } },
+      { isDeleted: false, status: 'scheduled' },
       {
         sort: { scheduledAt: 1 },
         limit: 50,
@@ -910,6 +910,13 @@ class EducationService extends BaseService {
     if (data.notesRemarks !== undefined) patch.notesRemarks = data.notesRemarks;
     if (data.nextFollowUpAt !== undefined) {
       patch.nextFollowUpAt = data.nextFollowUpAt ? new Date(data.nextFollowUpAt) : null;
+      if (!patch.nextFollowUpAt) {
+        const { LeadFollowUp } = require('../lead/lead.model');
+        await LeadFollowUp.updateMany(
+          { leadId: id, status: 'scheduled', isDeleted: { $ne: true } },
+          { $set: { status: 'completed', completedAt: new Date(), completedBy: actor?.id || null } }
+        );
+      }
     }
     if (data.notes !== undefined) {
       patch.requirements = { ...(lead.requirements || {}), notes: data.notes };
