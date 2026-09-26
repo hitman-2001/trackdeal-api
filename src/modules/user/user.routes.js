@@ -1,7 +1,7 @@
 'use strict';
 
 const { authenticate } = require('../../shared/middleware/authenticate.middleware');
-const { requirePermission } = require('../../shared/middleware/authorize.middleware');
+const { requirePermission, requireAnyPermission } = require('../../shared/middleware/authorize.middleware');
 const { PERMISSIONS } = require('../../shared/constants/roles-permissions.constants');
 const { UserController } = require('./user.controller');
 const {
@@ -42,7 +42,14 @@ async function userRoutes(fastify, opts) {
   // -------------------------------------------------------------------------
 
   fastify.get('/', {
-    preHandler: [requirePermission(PERMISSIONS.USERS_READ)],
+    preHandler: [
+      requireAnyPermission([
+        PERMISSIONS.USERS_READ,
+        PERMISSIONS.LEADS_READ,
+        PERMISSIONS.DEALS_READ,
+        PERMISSIONS.TASKS_READ,
+      ]),
+    ],
     schema: {
       tags: ['Users'],
       summary: 'List all users in organization context',

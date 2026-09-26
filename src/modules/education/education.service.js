@@ -65,6 +65,22 @@ class EducationService extends BaseService {
       stageMatch.assignedTo = actorObjectId;
     }
 
+    let studentFilter = { isDeleted: false };
+    if (!isAdmin) {
+      const userLeads = await this.leadRepository.findMany(
+        { ...baseLeadFilter },
+        { select: '_id' }
+      );
+      const userLeadIds = userLeads.map((l) => l._id);
+      studentFilter = {
+        isDeleted: false,
+        $or: [
+          { leadId: { $in: userLeadIds } },
+          { createdBy: actorObjectId },
+        ],
+      };
+    }
+
     const [
       leads,
       students,
@@ -76,7 +92,7 @@ class EducationService extends BaseService {
       staleLeads,
     ] = await Promise.all([
       this.leadRepository.count(baseLeadFilter),
-      this.studentRepository.count({ isDeleted: false }),
+      this.studentRepository.count(studentFilter),
       this.classRepository.count({ isDeleted: false }),
       this.leadRepository.count({
         ...baseLeadFilter,
@@ -326,6 +342,22 @@ class EducationService extends BaseService {
       createdAt: { $gte: startOfToday },
     };
 
+    let analyticsStudentFilter = { isDeleted: false };
+    if (!isAdmin) {
+      const userLeads = await this.leadRepository.findMany(
+        { ...baseMatch },
+        { select: '_id' }
+      );
+      const userLeadIds = userLeads.map((l) => l._id);
+      analyticsStudentFilter = {
+        isDeleted: false,
+        $or: [
+          { leadId: { $in: userLeadIds } },
+          { createdBy: actorObjectId },
+        ],
+      };
+    }
+
     // 2. Summary Counts
     const [
       totalInquiries,
@@ -346,7 +378,7 @@ class EducationService extends BaseService {
         status: { $in: ['counseling_scheduled', 'meeting_scheduled', 'follow_up', 'qualified', 'application_trial'] },
       }),
       this.classRepository.count({ isDeleted: false }),
-      this.studentRepository.count({ isDeleted: false }),
+      this.studentRepository.count(analyticsStudentFilter),
       priorMatch ? this.leadRepository.count(priorMatch) : Promise.resolve(0),
       this.leadRepository.count(todayMatch),
     ]);
@@ -673,10 +705,47 @@ class EducationService extends BaseService {
     const filter = { isDeleted: false };
     if (query.status) filter.status = query.status;
     if (query.classId) filter.classId = query.classId;
+    const { ROLES } = require('../../shared/constants/roles-permissions.constants');
+    const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ORG_ADMIN, 'super_admin', 'org_admin', 'admin'];
+    const isAdmin = adminRoles.includes(actor?.role) || actor?.permissions?.includes('leads.view_all');
+
+    if (!isAdmin) {
+      const actorId = actor?.id || actor?._id;
+      const actorObjectId = (actorId && mongoose.Types.ObjectId.isValid(actorId))
+        ? new mongoose.Types.ObjectId(actorId)
+        : actorId;
+      const userLeads = await this.leadRepository.findMany(
+        { isDeleted: false, tenantVertical: 'education', assignedTo: actorObjectId },
+        { select: '_id' }
+      );
+      const userLeadIds = userLeads.map((l) => l._id);
+      const ownershipCondition = {
+        $or: [
+          { leadId: { $in: userLeadIds } },
+          { createdBy: actorObjectId },
+        ],
+      };
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, ownershipCondition];
+        delete filter.$or;
+      } else {
+        filter.$or = ownershipCondition.$or;
+      }
+    }
+
     if (query.search) {
       const rx = new RegExp(String(query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ firstName: rx }, { lastName: rx }, { mobile: rx }, { email: rx }, { parentName: rx }];
+      const searchOr = [{ firstName: rx }, { lastName: rx }, { mobile: rx }, { email: rx }, { parentName: rx }];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
+        delete filter.$or;
+      } else if (filter.$and) {
+        filter.$and.push({ $or: searchOr });
+      } else {
+        filter.$or = searchOr;
+      }
     }
+
     const result = await this.studentRepository.paginate(filter, {
       page: query.page,
       limit: query.limit,
