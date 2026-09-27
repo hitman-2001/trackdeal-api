@@ -328,7 +328,7 @@ class BaseRepository {
     const tenantFilter = { ...filter, organizationId };
 
     if (this.model?.schema?.path('tenantId') && tenantId) {
-      tenantFilter.tenantId = tenantId;
+      tenantFilter.tenantId = { $in: [tenantId, null] };
     }
 
     // Branch filter is opt-in: only applied when isBranchScoped=true AND a branchId is active.

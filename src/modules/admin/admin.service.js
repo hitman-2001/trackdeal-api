@@ -538,6 +538,7 @@ class AdminService extends BaseService {
 
       const newUser = await User.create({
         organizationId: org._id,
+        tenantId: org.tenantId || null,
         firstName: firstName.trim(),
         lastName: (lastName || '').trim(),
         email: cleanEmail,
@@ -644,6 +645,7 @@ class AdminService extends BaseService {
 
       const previousOrgId = user.organizationId;
       user.organizationId = targetOrg._id;
+      user.tenantId = targetOrg.tenantId || null;
       user.branchId = null;
       await user.save();
 
