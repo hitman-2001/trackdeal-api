@@ -95,9 +95,24 @@ const leadSchema = new mongoose.Schema(
         "on_hold",
         "enrolled",
         "converted",
+        "interested",
+        "not_interested",
+        "future_prospect",
+        "call_back",
       ],
       default: "new",
       index: true,
+    },
+    subStatus: {
+      type: String,
+      trim: true,
+      default: "",
+      index: true,
+    },
+    statusRemarks: {
+      type: String,
+      trim: true,
+      default: "",
     },
 
     // Ownership & Collaboration

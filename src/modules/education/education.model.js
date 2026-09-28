@@ -72,6 +72,7 @@ const studentSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true },
     parentName: { type: String, trim: true },
     parentMobile: { type: String, trim: true },
+    schoolName: { type: String, trim: true, default: '' },
     classId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'EducationClass',

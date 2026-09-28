@@ -776,6 +776,7 @@ class EducationService extends BaseService {
       email: data.email || '',
       parentName: data.parentName || '',
       parentMobile: data.parentMobile || '',
+      schoolName: data.schoolName || data.collegeName || data.schoolCollege || '',
       classId: data.classId || null,
       leadId: data.leadId || null,
       status: data.status || 'active',
@@ -802,7 +803,7 @@ class EducationService extends BaseService {
     this._assertEducation(actor);
     await this.studentRepository.findByIdOrFail(id, 'Student');
     const patch = { updatedBy: actor.id };
-    ['firstName', 'lastName', 'mobile', 'email', 'parentName', 'parentMobile', 'status', 'notes', 'classId'].forEach((key) => {
+    ['firstName', 'lastName', 'mobile', 'email', 'parentName', 'parentMobile', 'schoolName', 'status', 'notes', 'classId'].forEach((key) => {
       if (data[key] !== undefined) patch[key] = data[key];
     });
     if (patch.classId) {
@@ -886,6 +887,7 @@ class EducationService extends BaseService {
     }
 
     if (query.status) filter.status = query.status;
+    if (query.subStatus) filter.subStatus = query.subStatus;
     if (query.classInterestId) filter.classInterestId = query.classInterestId;
     if (query.search) {
       const rx = new RegExp(String(query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -990,9 +992,10 @@ class EducationService extends BaseService {
     }
 
     const patch = { updatedBy: actor.id };
-    ['firstName', 'lastName', 'mobile', 'email', 'source', 'parentName', 'parentMobile', 'status', 'assignedTo', 'classInterestId', 'leadTemperature'].forEach((key) => {
+    ['firstName', 'lastName', 'mobile', 'email', 'source', 'parentName', 'parentMobile', 'status', 'subStatus', 'statusRemarks', 'assignedTo', 'classInterestId', 'leadTemperature'].forEach((key) => {
       if (data[key] !== undefined) patch[key] = data[key];
     });
+    if (data.remarks !== undefined && !patch.statusRemarks) patch.statusRemarks = data.remarks;
     if (data.customerFeedback !== undefined) patch.customerFeedback = data.customerFeedback;
     if (data.notesRemarks !== undefined) patch.notesRemarks = data.notesRemarks;
     if (data.nextFollowUpAt !== undefined) {
@@ -1017,9 +1020,9 @@ class EducationService extends BaseService {
       entityId: lead._id || id,
       module: 'Education',
       description: data.status && data.status !== lead.status
-        ? `Inquiry stage progressed from "${lead.status}" to "${data.status}" for ${lead.firstName} ${lead.lastName || ''}`.trim()
+        ? `Inquiry stage progressed from "${lead.status}" to "${data.status}"${data.subStatus ? ` (${data.subStatus})` : ''} for ${lead.firstName} ${lead.lastName || ''}`.trim()
         : `Inquiry details updated for ${lead.firstName} ${lead.lastName || ''}`.trim(),
-      oldValues: { status: lead.status, assignedTo: lead.assignedTo },
+      oldValues: { status: lead.status, subStatus: lead.subStatus, assignedTo: lead.assignedTo },
       newValues: patch,
     });
 
