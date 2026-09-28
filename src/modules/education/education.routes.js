@@ -112,6 +112,12 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.updateLead(req, reply),
   });
 
+  fastify.delete('/leads/:id', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_DELETE)],
+    schema: { tags: ['Education'], summary: 'Delete student lead' },
+    handler: (req, reply) => controller.removeLead(req, reply),
+  });
+
   fastify.post('/leads/:id/enroll', {
     preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
     schema: { tags: ['Education'], summary: 'Enroll a student lead into a class' },

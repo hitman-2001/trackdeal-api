@@ -276,10 +276,22 @@ class AuthService extends BaseService {
           expiresAt,
         });
 
+        const sanitizedUser = this._sanitizeUser(user);
+        sanitizedUser.role = tokenPayload.role;
+        sanitizedUser.permissions = tokenPayload.permissions;
+        sanitizedUser.organizationType = tokenPayload.organizationType;
+        sanitizedUser.tenantId = tokenPayload.tenantId;
+        sanitizedUser.tenantSlug = tokenPayload.tenantSlug;
+        sanitizedUser.tenantDomain = tokenPayload.tenantDomain;
+        sanitizedUser.tenantVertical = tokenPayload.tenantVertical || tokenPayload.tenantDomain;
+        sanitizedUser.enabledModules = tokenPayload.enabledModules;
+        sanitizedUser.featuresFlags = tokenPayload.featuresFlags;
+        sanitizedUser.forcePasswordChange = !user.forcePasswordChange;
+
         return {
           accessToken: newAccessToken,
           refreshToken: newRefreshToken,
-          user: this._sanitizeUser(user),
+          user: sanitizedUser,
         };
       });
     });
@@ -476,11 +488,18 @@ class AuthService extends BaseService {
     const roleName = roleDoc?.code || roleDoc?.name || 'guest';
     const rolePermissions = roleDoc?.permissions || [];
 
-    const added = user.permissionOverrides?.added || [];
-    const removed = user.permissionOverrides?.removed || [];
+    const added = (user.permissionOverrides?.added || []).map((p) => String(p).toLowerCase().trim());
+    const removed = new Set((user.permissionOverrides?.removed || []).map((p) => String(p).toLowerCase().trim()));
 
-    const permissionsSet = new Set([...rolePermissions, ...added]);
-    removed.forEach((p) => permissionsSet.delete(p));
+    const permissionsSet = new Set();
+    for (const p of [...rolePermissions, ...added]) {
+      const normalized = String(p).toLowerCase().trim();
+      const dotFormat = normalized.replace(/:/g, '.');
+      const colonFormat = normalized.replace(/\./g, ':');
+      if (!removed.has(normalized) && !removed.has(dotFormat) && !removed.has(colonFormat)) {
+        permissionsSet.add(normalized);
+      }
+    }
 
     // Fetch organization to get the organizationType for the JWT payload.
     // This is done once at login/refresh and baked into the JWT, so no

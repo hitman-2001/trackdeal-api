@@ -82,6 +82,11 @@ class EducationController extends BaseController {
     return this.ok(reply, item, 'Student lead updated successfully');
   }
 
+  async removeLead(request, reply) {
+    await this.educationService.removeLead(request.params.id, this.getUser(request));
+    return this.noContent(reply);
+  }
+
   async enrollLead(request, reply) {
     const student = await this.educationService.enrollLead(request.params.id, request.body || {}, this.getUser(request));
     return this.ok(reply, student, 'Student enrolled successfully');

@@ -551,6 +551,11 @@ class LeadService extends BaseService {
 
     // Validate user assignment if updated
     if (data.assignedTo && data.assignedTo !== lead.assignedTo?.toString()) {
+      const adminRoles = ["super_admin", "org_admin", "admin"];
+      const canAssign = adminRoles.includes(actor?.role) || (actor?.permissions && (actor.permissions.includes('leads.assign') || actor.permissions.includes('*')));
+      if (!canAssign) {
+        throw new ForbiddenError("Access Denied: You do not have permission to assign leads to other agents.");
+      }
       const { User } = require("../user/user.model");
       const user = await User.findById(data.assignedTo);
       if (!user || user.isDeleted) {
@@ -875,6 +880,12 @@ class LeadService extends BaseService {
    * Assign a Lead to a user (with explicit audit log arrays).
    */
   async assignLead(id, assigneeId, actor, reason = "Direct Assignment") {
+    const adminRoles = ["super_admin", "org_admin", "admin"];
+    const canAssign = adminRoles.includes(actor?.role) || (actor?.permissions && (actor.permissions.includes('leads.assign') || actor.permissions.includes('*')));
+    if (!canAssign) {
+      throw new ForbiddenError("Access Denied: You do not have permission to assign leads.");
+    }
+
     const lead = await this.leadRepository.findByIdOrFail(id, "Lead");
 
     if (
@@ -961,6 +972,12 @@ class LeadService extends BaseService {
    * Bulk assign leads.
    */
   async bulkAssign(leadIds, assigneeId, reason, actor) {
+    const adminRoles = ["super_admin", "org_admin", "admin"];
+    const canAssign = adminRoles.includes(actor?.role) || (actor?.permissions && (actor.permissions.includes('leads.assign') || actor.permissions.includes('*')));
+    if (!canAssign) {
+      throw new ForbiddenError("Access Denied: You do not have permission to bulk assign leads.");
+    }
+
     const updatedLeads = [];
     for (const leadId of leadIds) {
       const updated = await this.assignLead(
@@ -1488,6 +1505,12 @@ class LeadService extends BaseService {
    * Soft-delete a Lead.
    */
   async deleteLead(id, actor) {
+    const adminRoles = ["super_admin", "org_admin", "admin"];
+    const canDelete = adminRoles.includes(actor?.role) || (actor?.permissions && (actor.permissions.includes('leads.delete') || actor.permissions.includes('*')));
+    if (!canDelete) {
+      throw new ForbiddenError("Access Denied: You do not have permission to delete leads.");
+    }
+
     await this.leadRepository.findByIdOrFail(id, "Lead");
     await this.leadRepository.softDelete(id, actor.id);
     await this.logAudit({

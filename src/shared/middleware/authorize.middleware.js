@@ -28,8 +28,15 @@ function requirePermission(permissionKey) {
       return;
     }
 
-    const userPermissions = user.permissions || [];
-    if (userPermissions.includes('*') || userPermissions.includes(normalizedKey)) {
+    const colonKey = normalizedKey.replace(/\./g, ':');
+    const dotKey = normalizedKey.replace(/:/g, '.');
+    const userPermissions = (user.permissions || []).map((p) => String(p).toLowerCase().trim());
+    if (
+      userPermissions.includes('*') ||
+      userPermissions.includes(normalizedKey) ||
+      userPermissions.includes(colonKey) ||
+      userPermissions.includes(dotKey)
+    ) {
       return;
     }
 
@@ -60,8 +67,15 @@ function requireAnyPermission(permissionsList) {
       return;
     }
 
-    const userPermissions = user.permissions || [];
-    const hasAny = userPermissions.includes('*') || normalizedList.some((p) => userPermissions.includes(p));
+    const userPermissions = (user.permissions || []).map((p) => String(p).toLowerCase().trim());
+    const hasAny =
+      userPermissions.includes('*') ||
+      normalizedList.some(
+        (p) =>
+          userPermissions.includes(p) ||
+          userPermissions.includes(p.replace(/\./g, ':')) ||
+          userPermissions.includes(p.replace(/:/g, '.'))
+      );
 
     if (!hasAny) {
       throw new ForbiddenError(

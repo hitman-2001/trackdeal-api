@@ -918,9 +918,20 @@ class EducationService extends BaseService {
     const firstName = String(data?.firstName || '').trim();
     const mobile = String(data?.mobile || '').trim();
     if (!firstName || !mobile) throw new BusinessRuleError('Student lead first name and mobile are required.');
-    if (data.classInterestId) {
-      await this.classRepository.findByIdOrFail(data.classInterestId, 'Class');
+    const { ROLES } = require('../../shared/constants/roles-permissions.constants');
+    const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ORG_ADMIN, 'super_admin', 'org_admin', 'admin'];
+    const isAdmin = adminRoles.includes(actor?.role) || actor?.permissions?.includes('leads.view_all');
+
+    let resolvedAssignedTo = actor.id;
+    if (data.assignedTo && String(data.assignedTo) !== String(actor.id)) {
+      const canAssign = isAdmin || actor?.permissions?.includes('leads.assign') || actor?.permissions?.includes('*');
+      if (canAssign) {
+        resolvedAssignedTo = data.assignedTo;
+      } else {
+        throw new ForbiddenError('Access Denied: You do not have permission to assign leads to other staff members.');
+      }
     }
+
     const lead = await this.leadRepository.create({
       firstName,
       lastName: data.lastName || '',
@@ -931,9 +942,9 @@ class EducationService extends BaseService {
       parentMobile: data.parentMobile || '',
       classInterestId: data.classInterestId || null,
       tenantVertical: 'education',
-      status: data.assignedTo ? 'assigned' : 'new',
+      status: resolvedAssignedTo ? 'assigned' : 'new',
       ownerId: actor.id,
-      assignedTo: data.assignedTo || actor.id,
+      assignedTo: resolvedAssignedTo,
       createdBy: actor.id,
       updatedBy: actor.id,
       requirements: { notes: data.notes || '' },
@@ -968,6 +979,13 @@ class EducationService extends BaseService {
       const assignedId = String(lead.assignedTo?._id || lead.assignedTo || '');
       if (!lead.assignedTo || assignedId !== actorId) {
         throw new ForbiddenError('Access Denied: You can only modify leads assigned directly to you.');
+      }
+    }
+
+    if (data.assignedTo !== undefined && String(data.assignedTo || '') !== String(lead.assignedTo?._id || lead.assignedTo || '')) {
+      const canAssign = isAdmin || actor?.permissions?.includes('leads.assign') || actor?.permissions?.includes('*');
+      if (!canAssign) {
+        throw new ForbiddenError('Access Denied: You do not have permission to assign or reassign leads.');
       }
     }
 
@@ -1065,6 +1083,27 @@ class EducationService extends BaseService {
     });
 
     return student;
+  }
+
+  async removeLead(id, actor) {
+    this._assertEducation(actor);
+    const { ROLES } = require('../../shared/constants/roles-permissions.constants');
+    const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ORG_ADMIN, 'super_admin', 'org_admin', 'admin'];
+    const canDelete = adminRoles.includes(actor?.role) || (actor?.permissions && (actor.permissions.includes('leads.delete') || actor.permissions.includes('*')));
+    if (!canDelete) {
+      throw new ForbiddenError('Access Denied: You do not have permission to delete leads.');
+    }
+    const lead = await this.leadRepository.findByIdOrFail(id, 'Lead');
+    await this.leadRepository.softDelete(id, actor.id);
+
+    await this.logAudit({
+      actor,
+      action: 'education.lead.delete',
+      entity: 'Lead',
+      entityId: id,
+      module: 'Education',
+      description: `Deleted student lead "${lead.firstName} ${lead.lastName || ''}" (${lead.mobile})`.trim(),
+    });
   }
 }
 
