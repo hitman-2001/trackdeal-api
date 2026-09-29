@@ -41,49 +41,49 @@ async function educationRoutes(fastify) {
   });
 
   fastify.get('/classes', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    preHandler: [requirePermission(PERMISSIONS.CLASSES_READ)],
     schema: { tags: ['Education'], summary: 'List classes' },
     handler: (req, reply) => controller.listClasses(req, reply),
   });
 
   fastify.post('/classes', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+    preHandler: [requirePermission(PERMISSIONS.CLASSES_CREATE)],
     schema: { tags: ['Education'], summary: 'Create class' },
     handler: (req, reply) => controller.createClass(req, reply),
   });
 
   fastify.put('/classes/:id', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+    preHandler: [requirePermission(PERMISSIONS.CLASSES_UPDATE)],
     schema: { tags: ['Education'], summary: 'Update class' },
     handler: (req, reply) => controller.updateClass(req, reply),
   });
 
   fastify.delete('/classes/:id', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_DELETE)],
+    preHandler: [requirePermission(PERMISSIONS.CLASSES_DELETE)],
     schema: { tags: ['Education'], summary: 'Delete class' },
     handler: (req, reply) => controller.removeClass(req, reply),
   });
 
   fastify.get('/students', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_READ)],
     schema: { tags: ['Education'], summary: 'List students' },
     handler: (req, reply) => controller.listStudents(req, reply),
   });
 
   fastify.post('/students', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_CREATE)],
     schema: { tags: ['Education'], summary: 'Create student' },
     handler: (req, reply) => controller.createStudent(req, reply),
   });
 
   fastify.put('/students/:id', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_UPDATE)],
     schema: { tags: ['Education'], summary: 'Update student' },
     handler: (req, reply) => controller.updateStudent(req, reply),
   });
 
   fastify.delete('/students/:id', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_DELETE)],
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_DELETE)],
     schema: { tags: ['Education'], summary: 'Delete student' },
     handler: (req, reply) => controller.removeStudent(req, reply),
   });
@@ -119,7 +119,7 @@ async function educationRoutes(fastify) {
   });
 
   fastify.post('/leads/:id/enroll', {
-    preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_CREATE)],
     schema: { tags: ['Education'], summary: 'Enroll a student lead into a class' },
     handler: (req, reply) => controller.enrollLead(req, reply),
   });

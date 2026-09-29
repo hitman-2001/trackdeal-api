@@ -1,7 +1,7 @@
-'use strict';
+"use strict";
 
-const { ForbiddenError } = require('../errors');
-const { ROLES } = require('../constants/roles-permissions.constants');
+const { ForbiddenError } = require("../errors");
+const { ROLES } = require("../constants/roles-permissions.constants");
 
 // ---------------------------------------------------------------------------
 // RBAC & Tenant-Aware Authorization Middleware Suite (Fastify preHandler Hooks)
@@ -16,23 +16,32 @@ const { ROLES } = require('../constants/roles-permissions.constants');
  */
 function requirePermission(permissionKey) {
   const normalizedKey = permissionKey.toLowerCase().trim();
-  
+
   return async function requirePermissionHandler(request, reply) {
     const user = request.user;
     if (!user) {
-      throw new ForbiddenError('Access denied: not authenticated');
+      throw new ForbiddenError("Access denied: not authenticated");
     }
 
     // Super admin and Org admin bypass all permission restrictions within their scope
-    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin' || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
+    if (
+      user.role === ROLES.SUPER_ADMIN ||
+      user.role === "super_admin" ||
+      user.role === "system_admin" ||
+      user.role === ROLES.ORG_ADMIN ||
+      user.role === "org_admin" ||
+      user.role === "organization_admin"
+    ) {
       return;
     }
 
-    const colonKey = normalizedKey.replace(/\./g, ':');
-    const dotKey = normalizedKey.replace(/:/g, '.');
-    const userPermissions = (user.permissions || []).map((p) => String(p).toLowerCase().trim());
+    const colonKey = normalizedKey.replace(/\./g, ":");
+    const dotKey = normalizedKey.replace(/:/g, ".");
+    const userPermissions = (user.permissions || []).map((p) =>
+      String(p).toLowerCase().trim(),
+    );
     if (
-      userPermissions.includes('*') ||
+      userPermissions.includes("*") ||
       userPermissions.includes(normalizedKey) ||
       userPermissions.includes(colonKey) ||
       userPermissions.includes(dotKey)
@@ -41,7 +50,7 @@ function requirePermission(permissionKey) {
     }
 
     throw new ForbiddenError(
-      `Access denied: insufficient permissions. Required: ${permissionKey}`
+      `Access denied: insufficient permissions. Required: ${permissionKey}`,
     );
   };
 }
@@ -59,27 +68,36 @@ function requireAnyPermission(permissionsList) {
   return async function requireAnyPermissionHandler(request, reply) {
     const user = request.user;
     if (!user) {
-      throw new ForbiddenError('Access denied: not authenticated');
+      throw new ForbiddenError("Access denied: not authenticated");
     }
 
     // Super admin and Org admin bypass
-    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin' || user.role === ROLES.ORG_ADMIN || user.role === 'org_admin') {
+    if (
+      user.role === ROLES.SUPER_ADMIN ||
+      user.role === "super_admin" ||
+      user.role === "system_admin" ||
+      user.role === ROLES.ORG_ADMIN ||
+      user.role === "org_admin" ||
+      user.role === "organization_admin"
+    ) {
       return;
     }
 
-    const userPermissions = (user.permissions || []).map((p) => String(p).toLowerCase().trim());
+    const userPermissions = (user.permissions || []).map((p) =>
+      String(p).toLowerCase().trim(),
+    );
     const hasAny =
-      userPermissions.includes('*') ||
+      userPermissions.includes("*") ||
       normalizedList.some(
         (p) =>
           userPermissions.includes(p) ||
-          userPermissions.includes(p.replace(/\./g, ':')) ||
-          userPermissions.includes(p.replace(/:/g, '.'))
+          userPermissions.includes(p.replace(/\./g, ":")) ||
+          userPermissions.includes(p.replace(/:/g, ".")),
       );
 
     if (!hasAny) {
       throw new ForbiddenError(
-        `Access denied: insufficient permissions. Required at least one of: ${permissionsList.join(', ')}`
+        `Access denied: insufficient permissions. Required at least one of: ${permissionsList.join(", ")}`,
       );
     }
   };
@@ -97,12 +115,16 @@ function requireRole(roleCode) {
   return async function requireRoleHandler(request, reply) {
     const user = request.user;
     if (!user) {
-      throw new ForbiddenError('Access denied: not authenticated');
+      throw new ForbiddenError("Access denied: not authenticated");
     }
 
-    if (user.role !== ROLES.SUPER_ADMIN && user.role !== 'system_admin' && user.role !== normalizedCode) {
+    if (
+      user.role !== ROLES.SUPER_ADMIN &&
+      user.role !== "system_admin" &&
+      user.role !== normalizedCode
+    ) {
       throw new ForbiddenError(
-        `Access denied: role restriction active. Required: ${roleCode}`
+        `Access denied: role restriction active. Required: ${roleCode}`,
       );
     }
   };
@@ -124,21 +146,32 @@ function authorize(requiredPermissions, options = { requireAll: false }) {
   return async function rbacHandler(request, reply) {
     const user = request.user;
     if (!user) {
-      throw new ForbiddenError('Access denied: not authenticated');
+      throw new ForbiddenError("Access denied: not authenticated");
     }
 
-    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin') {
+    if (
+      user.role === ROLES.SUPER_ADMIN ||
+      user.role === "super_admin" ||
+      user.role === "system_admin" ||
+      user.role === ROLES.ORG_ADMIN ||
+      user.role === "org_admin" ||
+      user.role === "organization_admin"
+    ) {
       return;
     }
 
     const userPermissions = user.permissions || [];
     const hasPermission = options.requireAll
-      ? permissions.every((p) => userPermissions.includes(p.toLowerCase().trim()))
-      : permissions.some((p) => userPermissions.includes(p.toLowerCase().trim()));
+      ? permissions.every((p) =>
+          userPermissions.includes(p.toLowerCase().trim()),
+        )
+      : permissions.some((p) =>
+          userPermissions.includes(p.toLowerCase().trim()),
+        );
 
     if (!hasPermission) {
       throw new ForbiddenError(
-        `Access denied: insufficient permissions. Required: ${permissions.join(', ')}`
+        `Access denied: insufficient permissions. Required: ${permissions.join(", ")}`,
       );
     }
   };
@@ -155,17 +188,23 @@ function authorizeOwnerOrPermission(getResourceUserId, permission) {
   return async function ownerCheck(request, reply) {
     const user = request.user;
     if (!user) {
-      throw new ForbiddenError('Access denied: not authenticated');
+      throw new ForbiddenError("Access denied: not authenticated");
     }
 
     // Super admin or users with the overriding permission bypass ownership restrictions
-    if (user.role === ROLES.SUPER_ADMIN || user.role === 'system_admin' || (user.permissions || []).includes(permission.toLowerCase().trim())) {
+    if (
+      user.role === ROLES.SUPER_ADMIN ||
+      user.role === "system_admin" ||
+      (user.permissions || []).includes(permission.toLowerCase().trim())
+    ) {
       return;
     }
 
     const resourceUserId = await getResourceUserId(request);
     if (String(resourceUserId) !== String(user.id)) {
-      throw new ForbiddenError('Access denied: you can only access your own resources');
+      throw new ForbiddenError(
+        "Access denied: you can only access your own resources",
+      );
     }
   };
 }

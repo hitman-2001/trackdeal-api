@@ -275,7 +275,16 @@ class UserService extends BaseService {
    */
   async updateUserPermissions(id, permissionOverrides, actor) {
     const { ROLES } = require('../../shared/constants/roles-permissions.constants');
-    if (actor.role !== ROLES.ORG_ADMIN) {
+    const isOrgOrSuperAdmin = [
+      ROLES.ORG_ADMIN,
+      'org_admin',
+      'organization_admin',
+      ROLES.SUPER_ADMIN,
+      'super_admin',
+      'system_admin',
+    ].includes(actor.role);
+
+    if (!isOrgOrSuperAdmin) {
       throw new ForbiddenError('Only an Organization Admin can manage user-specific permissions.');
     }
     if (String(id) === String(actor.id)) {
@@ -289,7 +298,7 @@ class UserService extends BaseService {
     const targetRole = await tenantContext.run({ isSystemOverride: true }, () =>
       Role.findById(user.roleId).select('code').lean()
     );
-    if (targetRole?.code === ROLES.SUPER_ADMIN) {
+    if (targetRole?.code === ROLES.SUPER_ADMIN || targetRole?.code === 'super_admin') {
       throw new ForbiddenError('Organization Admins cannot modify a Super Admin account.');
     }
 
@@ -309,11 +318,16 @@ class UserService extends BaseService {
       throw new BusinessRuleError(`Cannot assign unknown permissions: ${invalidKeys.join(', ')}`, 'INVALID_PERMISSIONS_ASSIGNED');
     }
 
-    const actorPermissions = new Set(actor.permissions || []);
-    if (!actorPermissions.has('*')) {
-      const unauthorizedKeys = requestedKeys.filter((key) => !actorPermissions.has(key));
-      if (unauthorizedKeys.length) {
-        throw new ForbiddenError(`You cannot delegate permissions you do not possess: ${unauthorizedKeys.join(', ')}`);
+    // Platform Super Admins and Organization Admins possess administrative authority
+    // to manage and delegate any registered system permissions within their organization.
+    // For non-admin roles (if delegation is ever opened to managers), enforce token possession.
+    if (!isOrgOrSuperAdmin) {
+      const actorPermissions = new Set(actor.permissions || []);
+      if (!actorPermissions.has('*')) {
+        const unauthorizedKeys = requestedKeys.filter((key) => !actorPermissions.has(key));
+        if (unauthorizedKeys.length) {
+          throw new ForbiddenError(`You cannot delegate permissions you do not possess: ${unauthorizedKeys.join(', ')}`);
+        }
       }
     }
 
@@ -708,17 +722,11 @@ class UserService extends BaseService {
     const targetWeight = ROLE_WEIGHTS[targetRole.code] || 0;
 
     if (actor.role !== 'super_admin') {
-      if (targetRole.code === 'super_admin') {
-        throw new ForbiddenError('Only Super Admins can assign the Super Admin role.');
+      if (['super_admin', 'org_admin', 'organization_admin'].includes(targetRole.code)) {
+        throw new ForbiddenError('You cannot assign Super Admin or Organization Admin roles.');
       }
-      if (actor.role === 'org_admin') {
-        if (targetWeight > actorWeight) {
-          throw new ForbiddenError('You cannot assign a role higher than Organization Admin.');
-        }
-      } else {
-        if (targetWeight >= actorWeight) {
-          throw new ForbiddenError('You cannot assign or invite a user with a role equal to or higher than your own.');
-        }
+      if (targetWeight >= actorWeight) {
+        throw new ForbiddenError('You cannot assign or invite a user with a role equal to or higher than your own.');
       }
     }
 
