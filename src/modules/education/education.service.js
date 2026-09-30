@@ -921,7 +921,15 @@ class EducationService extends BaseService {
     }
 
     const filter = { isDeleted: false };
-    if (query.status) filter.status = query.status;
+    if (query.status) {
+      if (Array.isArray(query.status)) {
+        filter.status = { $in: query.status.filter(Boolean) };
+      } else if (typeof query.status === 'string' && query.status.includes(',')) {
+        filter.status = { $in: query.status.split(',').map((s) => s.trim()).filter(Boolean) };
+      } else {
+        filter.status = query.status;
+      }
+    }
     if (query.classId) filter.classId = query.classId;
     const {
       ROLES,
@@ -1189,7 +1197,20 @@ class EducationService extends BaseService {
       filter.assignedTo = query.assignedTo;
     }
 
-    if (query.status) filter.status = query.status;
+    if (query.status) {
+      if (Array.isArray(query.status)) {
+        filter.status = { $in: query.status.filter(Boolean) };
+      } else if (typeof query.status === "string" && query.status.includes(",")) {
+        filter.status = {
+          $in: query.status
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        };
+      } else {
+        filter.status = query.status;
+      }
+    }
     if (query.subStatus) filter.subStatus = query.subStatus;
     if (query.classInterestId) filter.classInterestId = query.classInterestId;
     if (query.search) {
