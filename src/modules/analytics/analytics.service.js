@@ -647,7 +647,7 @@ class AnalyticsService extends BaseService {
     const { start, end } = parseDateRange(params.startDate, params.endDate);
     const now = new Date();
 
-    const { Lead } = require("../lead/lead.model");
+    const { Lead, LeadFollowUp } = require("../lead/lead.model");
     const { Property } = require("../property/property.model");
     const { Deal } = require("../deal/deal.model");
     const { Commission } = require("../commission/commission.model");
@@ -659,11 +659,13 @@ class AnalyticsService extends BaseService {
     const taskFilter = { ...baseFilter };
     const propFilter = { ...baseFilter };
     const commFilter = { ...baseFilter };
+    const followUpFilter = { organizationId: orgId, isDeleted: { $ne: true }, status: "scheduled" };
 
     if (actor.role === "agent") {
       leadFilter.$or = [{ assignedTo: actor.id }, { agentIds: actor.id }, { createdBy: actor.id }];
       dealFilter.$or = [{ sourcingAgent: actor.id }, { closingAgent: actor.id }, { assignedTo: actor.id }, { broker: actor.id }];
       taskFilter.$or = [{ assignedTo: actor.id }, { createdBy: actor.id }];
+      followUpFilter.$or = [{ assignedTo: actor.id }, { createdBy: actor.id }];
     }
 
     // 1. Fetch live aggregate collections concurrently
@@ -676,6 +678,8 @@ class AnalyticsService extends BaseService {
       allDeals,
       allCommissions,
       allTasks,
+      allLeadFollowUps,
+      allLeadsWithFollowUp,
       recentLeads,
     ] = await Promise.all([
       Lead.countDocuments({ ...leadFilter, status: { $nin: ["closed_won", "closed_lost", "lost", "junk"] } }),
@@ -686,6 +690,12 @@ class AnalyticsService extends BaseService {
       Deal.find(dealFilter).populate("customer", "firstName lastName name").populate("project", "name").lean(),
       Commission.find(commFilter).populate("customerId", "firstName lastName name").populate("projectId", "name").populate("propertyId", "title").lean(),
       Task.find({ ...taskFilter, status: { $ne: "completed" } }).populate("leadId", "firstName lastName name mobile").sort({ dueDate: 1 }).limit(20).lean(),
+      LeadFollowUp.find(followUpFilter).populate("leadId", "firstName lastName name mobile email status").populate("assignedTo", "firstName lastName name").sort({ scheduledAt: 1 }).limit(30).lean(),
+      Lead.find({
+        ...leadFilter,
+        nextFollowUpAt: { $ne: null, $exists: true },
+        status: { $nin: ["closed_won", "closed_lost", "lost", "junk"] },
+      }).select("firstName lastName name mobile nextFollowUpAt lastActivityType status assignedTo notesRemarks qualification").populate("assignedTo", "firstName lastName name").sort({ nextFollowUpAt: 1 }).limit(30).lean(),
       Lead.find(leadFilter).sort({ createdAt: -1 }).limit(6).populate("customerId", "firstName lastName name mobile").lean(),
     ]);
 
@@ -787,35 +797,109 @@ class AnalyticsService extends BaseService {
       else tempMap.warm++;
     }
 
-    // 5. Follow-ups widget (Due Today vs Overdue)
+    // 5. Follow-ups widget (Due Today vs Overdue) — Tasks, LeadFollowUps, & Leads with nextFollowUpAt
     const todayFollowups = [];
     const overdueFollowups = [];
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const seenFollowupLeadIds = new Set();
 
+    // A. Tasks from Task model
     for (const task of allTasks) {
       const taskDueDate = task.dueDate ? new Date(task.dueDate) : null;
-      const leadName = task.leadId ? `${task.leadId.firstName || ""} ${task.leadId.lastName || ""}`.trim() : "Direct Contact";
+      if (!taskDueDate || isNaN(taskDueDate.getTime())) continue;
+
+      const leadIdStr = task.leadId ? String(task.leadId._id || task.leadId) : null;
+      if (leadIdStr) seenFollowupLeadIds.add(leadIdStr);
+
+      const leadName = task.leadId
+        ? `${task.leadId.firstName || ""} ${task.leadId.lastName || ""}`.trim() || task.leadId.name || "Client follow-up"
+        : "Direct Contact";
 
       const formattedTask = {
-        id: task._id,
+        id: String(task._id),
+        leadId: leadIdStr,
         title: task.title || "Follow-up Call",
         leadName,
-        type: task.type || "Call",
+        type: task.type ? (task.type.charAt(0).toUpperCase() + task.type.slice(1)) : "Call",
         dueDate: task.dueDate,
-        dueTime: task.dueTime || "11:00 AM",
+        dueTime: task.dueTime || taskDueDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         priority: task.priority || "medium",
-        status: task.status,
+        status: task.status || "pending",
       };
 
-      if (taskDueDate) {
-        const taskDateStr = taskDueDate.toISOString().slice(0, 10);
-        if (taskDateStr === todayStr) {
-          todayFollowups.push(formattedTask);
-        } else if (taskDueDate < now) {
-          overdueFollowups.push(formattedTask);
-        }
+      if (taskDueDate >= todayStart && taskDueDate <= todayEnd) {
+        todayFollowups.push(formattedTask);
+      } else if (taskDueDate < todayStart) {
+        overdueFollowups.push(formattedTask);
       }
     }
+
+    // B. Scheduled Lead Follow-ups from LeadFollowUp model
+    for (const fu of allLeadFollowUps) {
+      if (!fu.leadId) continue;
+      const leadIdStr = String(fu.leadId._id || fu.leadId);
+      if (seenFollowupLeadIds.has(leadIdStr)) continue;
+      seenFollowupLeadIds.add(leadIdStr);
+
+      const fuDueDate = fu.scheduledAt ? new Date(fu.scheduledAt) : null;
+      if (!fuDueDate || isNaN(fuDueDate.getTime())) continue;
+
+      const leadName = `${fu.leadId.firstName || ""} ${fu.leadId.lastName || ""}`.trim() || fu.leadId.name || "Client follow-up";
+      const fuType = fu.type ? (fu.type.charAt(0).toUpperCase() + fu.type.slice(1)) : "Call";
+
+      const formatted = {
+        id: String(fu._id),
+        leadId: leadIdStr,
+        title: fu.notes || `${fuType} follow-up with ${leadName}`,
+        leadName,
+        type: fuType,
+        dueDate: fu.scheduledAt,
+        dueTime: fuDueDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        priority: "medium",
+        status: fu.status || "scheduled",
+      };
+
+      if (fuDueDate >= todayStart && fuDueDate <= todayEnd) {
+        todayFollowups.push(formatted);
+      } else if (fuDueDate < todayStart) {
+        overdueFollowups.push(formatted);
+      }
+    }
+
+    // C. Leads with nextFollowUpAt directly on lead document
+    for (const l of allLeadsWithFollowUp) {
+      const leadIdStr = String(l._id);
+      if (seenFollowupLeadIds.has(leadIdStr)) continue;
+      seenFollowupLeadIds.add(leadIdStr);
+
+      const sched = new Date(l.nextFollowUpAt);
+      if (isNaN(sched.getTime())) continue;
+
+      const leadName = `${l.firstName || ""} ${l.lastName || ""}`.trim() || l.name || "Client follow-up";
+      const fuType = l.lastActivityType ? (l.lastActivityType.charAt(0).toUpperCase() + l.lastActivityType.slice(1)) : "Call";
+
+      const formatted = {
+        id: `fu-${leadIdStr}`,
+        leadId: leadIdStr,
+        title: l.qualification?.notesRemarks || l.notesRemarks || `Follow-up with ${leadName}`,
+        leadName,
+        type: fuType,
+        dueDate: l.nextFollowUpAt,
+        dueTime: sched.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        priority: "medium",
+        status: "scheduled",
+      };
+
+      if (sched >= todayStart && sched <= todayEnd) {
+        todayFollowups.push(formatted);
+      } else if (sched < todayStart) {
+        overdueFollowups.push(formatted);
+      }
+    }
+
+    todayFollowups.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    overdueFollowups.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
     // 6. Monthly Performance Trends (Last 6 Months)
     const monthlySeries = [];

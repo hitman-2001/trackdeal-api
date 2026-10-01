@@ -1393,10 +1393,28 @@ class LeadService extends BaseService {
       } else {
         // Synthetic followUp rescheduling
         if (data.scheduledAt) {
+          const newSchedDate = new Date(data.scheduledAt);
           await Lead.updateOne(
             { _id: leadId, organizationId: actor.organizationId },
-            { $set: { nextFollowUpAt: new Date(data.scheduledAt) } }
+            { $set: { nextFollowUpAt: newSchedDate } }
           );
+
+          // Elevate synthetic follow-up into a persistent LeadFollowUp record
+          const targetLead = await Lead.findOne({ _id: leadId, organizationId: actor.organizationId });
+          if (targetLead) {
+            const createdFu = await LeadFollowUp.create({
+              organizationId: actor.organizationId,
+              branchId: targetLead.branchId,
+              leadId,
+              scheduledAt: newSchedDate,
+              type: data.type || "call",
+              notes: data.notes || "Rescheduled follow-up",
+              assignedTo: data.assignedTo || targetLead.assignedTo || actor.id,
+              createdBy: actor.id,
+              status: data.status || "scheduled",
+            });
+            return createdFu;
+          }
         }
         return { _id: followUpId, leadId, status: data.status || "scheduled", scheduledAt: data.scheduledAt };
       }
@@ -1408,7 +1426,7 @@ class LeadService extends BaseService {
    */
   async deleteFollowUp(leadId, followUpId, actor) {
     return tenantContext.run({ organizationId: actor.organizationId, branchId: actor.branchId }, async () => {
-      const { LeadFollowUp } = require("./lead.model");
+      const { LeadFollowUp, Lead } = require("./lead.model");
       const followUp = await LeadFollowUp.findOne({
         _id: followUpId,
         leadId,
@@ -1420,6 +1438,21 @@ class LeadService extends BaseService {
 
       followUp.isDeleted = true;
       await followUp.save();
+
+      // Recalculate next upcoming follow-up for lead
+      const nextPending = await LeadFollowUp.findOne({
+        leadId,
+        organizationId: actor.organizationId,
+        status: "scheduled",
+        isDeleted: { $ne: true },
+        scheduledAt: { $gt: new Date() },
+      }).sort({ scheduledAt: 1 });
+
+      await Lead.updateOne(
+        { _id: leadId, organizationId: actor.organizationId },
+        { $set: { nextFollowUpAt: nextPending ? nextPending.scheduledAt : null } }
+      );
+
       return { success: true, message: "Follow-up deleted successfully" };
     });
   }
@@ -1430,7 +1463,8 @@ class LeadService extends BaseService {
   async scheduleFollowUp(id, followUpData, actor) {
     const lead = await this.leadRepository.findByIdOrFail(id, "Lead");
 
-    if (new Date(followUpData.scheduledAt) < new Date()) {
+    // Allow 15-minute grace tolerance for client/server clock drifts
+    if (new Date(followUpData.scheduledAt) < new Date(Date.now() - 15 * 60 * 1000)) {
       throw new BusinessRuleError(
         "Follow-up date cannot be in the past",
         "FOLLOW_UP_PAST_DATE"
@@ -1448,11 +1482,12 @@ class LeadService extends BaseService {
       assignedTo: followUpData.assignedTo || lead.assignedTo || actor.id,
     });
 
+    const actType = followUpData.type === "whatsapp" ? "whatsapp" : (followUpData.type === "meeting" ? "meeting" : "call");
     await this.leadActivityRepository.create({
       organizationId: actor.organizationId,
       branchId: lead.branchId,
       leadId: id,
-      type: "whatsapp",
+      type: actType,
       description: `Outreach follow-up scheduled of type '${followUpData.type}' for ${followUpData.scheduledAt}`,
       performedBy: actor.id,
       metadata: { followUpId: followUp.id },

@@ -159,7 +159,7 @@ class EducationService extends BaseService {
 
     // 2. Fetch scheduled follow-ups & reminders
     const rawFollowUps = await this.followUpRepository.findMany(
-      { isDeleted: false, status: "scheduled" },
+      { isDeleted: { $ne: true }, status: "scheduled" },
       {
         sort: { scheduledAt: 1 },
         limit: 50,
@@ -167,7 +167,7 @@ class EducationService extends BaseService {
           {
             path: "leadId",
             select:
-              "firstName lastName mobile email parentName parentMobile status leadTemperature classInterestId tenantVertical",
+              "firstName lastName name mobile email parentName parentMobile status leadTemperature classInterestId tenantVertical",
             populate: { path: "classInterestId", select: "name code" },
           },
           { path: "assignedTo", select: "firstName lastName email" },
@@ -177,13 +177,19 @@ class EducationService extends BaseService {
 
     const leadsWithFollowUp = await this.leadRepository.findMany(
       {
-        isDeleted: false,
-        tenantVertical: "education",
-        nextFollowUpAt: { $ne: null },
+        isDeleted: { $ne: true },
+        $or: [
+          { tenantVertical: "education" },
+          { tenantVertical: { $exists: false } },
+          { tenantVertical: null },
+          { tenantVertical: "" },
+        ],
+        status: { $nin: ["closed_won", "closed_lost", "lost", "junk", "enrolled"] },
+        nextFollowUpAt: { $ne: null, $exists: true },
       },
       {
         sort: { nextFollowUpAt: 1 },
-        limit: 30,
+        limit: 50,
         populate: [
           { path: "classInterestId", select: "name code" },
           { path: "assignedTo", select: "firstName lastName email" },
@@ -196,15 +202,14 @@ class EducationService extends BaseService {
 
     for (const f of rawFollowUps) {
       if (f.leadId) {
-        // Only include if it's an education lead
         if (
           f.leadId.tenantVertical &&
-          f.leadId.tenantVertical !== "education"
+          f.leadId.tenantVertical === "realEstate"
         ) {
           continue;
         }
-        if (!isAdmin) {
-          const actorIdStr = String(actorId || "");
+        if (!isAdmin && actorId) {
+          const actorIdStr = String(actorId);
           const assignedId = String(
             f.assignedTo?._id ||
               f.assignedTo ||
@@ -212,24 +217,31 @@ class EducationService extends BaseService {
               f.leadId?.assignedTo ||
               "",
           );
-          if (!assignedId || assignedId !== actorIdStr) {
+          if (assignedId && assignedId !== actorIdStr) {
             continue;
           }
         }
         const lId = String(f.leadId._id || f.leadId);
         seenLeadIds.add(lId);
         const sched = new Date(f.scheduledAt);
+        if (isNaN(sched.getTime())) continue;
+
         const isOverdue = f.status === "scheduled" && sched < now;
         const isToday = sched >= startOfToday && sched <= endOfToday;
         const isUpcoming = sched > endOfToday;
+
+        const studentName =
+          `${f.leadId.firstName || ""} ${f.leadId.lastName || ""}`.trim() ||
+          f.leadId.name ||
+          f.leadId.parentName ||
+          f.leadId.mobile ||
+          "Student Lead";
 
         followUps.push({
           _id: String(f._id),
           leadId: lId,
           lead: f.leadId,
-          studentName:
-            `${f.leadId.firstName || ""} ${f.leadId.lastName || ""}`.trim() ||
-            "Student Lead",
+          studentName,
           parentName: f.leadId.parentName || "",
           contactNumber: f.leadId.parentMobile || f.leadId.mobile || "",
           studentMobile: f.leadId.mobile || "",
@@ -249,24 +261,32 @@ class EducationService extends BaseService {
     for (const l of leadsWithFollowUp) {
       const lId = String(l._id);
       if (!seenLeadIds.has(lId)) {
-        if (!isAdmin) {
-          const actorIdStr = String(actorId || "");
+        if (!isAdmin && actorId) {
+          const actorIdStr = String(actorId);
           const assignedId = String(l.assignedTo?._id || l.assignedTo || "");
-          if (!assignedId || assignedId !== actorIdStr) {
+          if (assignedId && assignedId !== actorIdStr) {
             continue;
           }
         }
         const sched = new Date(l.nextFollowUpAt);
+        if (isNaN(sched.getTime())) continue;
+
         const isOverdue = sched < now;
         const isToday = sched >= startOfToday && sched <= endOfToday;
         const isUpcoming = sched > endOfToday;
+
+        const studentName =
+          `${l.firstName || ""} ${l.lastName || ""}`.trim() ||
+          l.name ||
+          l.parentName ||
+          l.mobile ||
+          "Student Lead";
 
         followUps.push({
           _id: `fu-${lId}`,
           leadId: lId,
           lead: l,
-          studentName:
-            `${l.firstName || ""} ${l.lastName || ""}`.trim() || "Student Lead",
+          studentName,
           parentName: l.parentName || "",
           contactNumber: l.parentMobile || l.mobile || "",
           studentMobile: l.mobile || "",
