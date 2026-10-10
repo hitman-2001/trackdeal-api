@@ -40,6 +40,12 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.analytics(req, reply),
   });
 
+  fastify.get('/team-activity', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    schema: { tags: ['Education'], summary: 'Education staff and team activity feed' },
+    handler: (req, reply) => controller.teamActivity(req, reply),
+  });
+
   fastify.get('/classes', {
     preHandler: [requirePermission(PERMISSIONS.CLASSES_READ)],
     schema: { tags: ['Education'], summary: 'List classes' },

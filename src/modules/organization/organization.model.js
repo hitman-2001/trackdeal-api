@@ -164,6 +164,10 @@ const organizationSchema = new mongoose.Schema(
       faviconUrl: {
         type: String,
       },
+      themeTokens: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      },
     },
     
     // Organization-level defaults

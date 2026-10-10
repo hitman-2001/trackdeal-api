@@ -167,8 +167,11 @@ class EducationService extends BaseService {
           {
             path: "leadId",
             select:
-              "firstName lastName name mobile email parentName parentMobile status leadTemperature classInterestId tenantVertical",
-            populate: { path: "classInterestId", select: "name code" },
+              "firstName lastName name mobile email parentName parentMobile status leadTemperature classInterestId tenantVertical assignedTo",
+            populate: [
+              { path: "classInterestId", select: "name code" },
+              { path: "assignedTo", select: "firstName lastName email" },
+            ],
           },
           { path: "assignedTo", select: "firstName lastName email" },
         ],
@@ -237,6 +240,17 @@ class EducationService extends BaseService {
           f.leadId.mobile ||
           "Student Lead";
 
+        const counselor =
+          (f.assignedTo && typeof f.assignedTo === "object" && (f.assignedTo.firstName || f.assignedTo.email))
+            ? f.assignedTo
+            : (f.leadId?.assignedTo && typeof f.leadId.assignedTo === "object" && (f.leadId.assignedTo.firstName || f.leadId.assignedTo.email))
+              ? f.leadId.assignedTo
+              : null;
+
+        const assignedStaffName = counselor
+          ? (`${counselor.firstName || ""}`.trim() ? `${counselor.firstName || ""} ${counselor.lastName || ""}`.trim() : counselor.email || "Counselor")
+          : "Unassigned";
+
         followUps.push({
           _id: String(f._id),
           leadId: lId,
@@ -250,7 +264,8 @@ class EducationService extends BaseService {
           type: f.type || "call",
           notes: f.notes || "",
           status: f.status || "scheduled",
-          assignedTo: f.assignedTo,
+          assignedTo: counselor || f.assignedTo,
+          assignedStaffName,
           isOverdue,
           isToday,
           isUpcoming,
@@ -276,11 +291,21 @@ class EducationService extends BaseService {
         const isUpcoming = sched > endOfToday;
 
         const studentName =
-          `${l.firstName || ""} ${l.lastName || ""}`.trim() ||
-          l.name ||
-          l.parentName ||
-          l.mobile ||
-          "Student Lead";
+          `${l.firstName || ""}`.trim()
+            ? `${l.firstName || ""} ${l.lastName || ""}`.trim()
+            : l.name ||
+              l.parentName ||
+              l.mobile ||
+              "Student Lead";
+
+        const counselor =
+          (l.assignedTo && typeof l.assignedTo === "object" && (l.assignedTo.firstName || l.assignedTo.email))
+            ? l.assignedTo
+            : null;
+
+        const assignedStaffName = counselor
+          ? (`${counselor.firstName || ""}`.trim() ? `${counselor.firstName || ""} ${counselor.lastName || ""}`.trim() : counselor.email || "Counselor")
+          : "Unassigned";
 
         followUps.push({
           _id: `fu-${lId}`,
@@ -299,6 +324,7 @@ class EducationService extends BaseService {
             "Scheduled follow-up",
           status: "scheduled",
           assignedTo: l.assignedTo,
+          assignedStaffName,
           isOverdue,
           isToday,
           isUpcoming,
@@ -745,6 +771,182 @@ class EducationService extends BaseService {
       sourceChartData,
       counselorPerformanceData,
       strategicInsights,
+    };
+  }
+
+  async getTeamActivity(actor) {
+    this._assertEducation(actor);
+    const orgId = actor.organizationId;
+    const orgObjectId =
+      orgId && mongoose.Types.ObjectId.isValid(orgId)
+        ? new mongoose.Types.ObjectId(orgId)
+        : orgId;
+
+    const { LeadActivity, LeadNote } = require("../lead/lead.model");
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    // 1. Fetch recent team activities (calls, chats, notes, meetings, status changes)
+    const recentActivities = await LeadActivity.find({
+      organizationId: orgObjectId,
+      isDeleted: false,
+    })
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .populate("leadId", "firstName lastName parentName mobile status classInterestId tenantVertical")
+      .populate("performedBy", "firstName lastName email designation")
+      .lean();
+
+    // 2. Fetch recent notes / comments on leads
+    const recentNotes = await LeadNote.find({
+      organizationId: orgObjectId,
+    })
+      .sort({ createdAt: -1 })
+      .limit(15)
+      .populate("leadId", "firstName lastName parentName mobile status")
+      .populate("createdBy", "firstName lastName email designation")
+      .lean();
+
+    // 3. Team Member / Counselor Performance Overview
+    const teamStatsAgg = await this.leadRepository.model.aggregate([
+      {
+        $match: {
+          $or: [{ organizationId: orgObjectId }, { organizationId: orgId }],
+          isDeleted: false,
+          tenantVertical: "education",
+          assignedTo: { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: "$assignedTo",
+          totalAssigned: { $sum: 1 },
+          contacted: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    "$status",
+                    [
+                      "contacted",
+                      "follow_up",
+                      "meeting_scheduled",
+                      "counseling_scheduled",
+                      "qualified",
+                      "application_trial",
+                      "enrolled",
+                      "converted",
+                    ],
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          inCounseling: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    "$status",
+                    [
+                      "meeting_scheduled",
+                      "counseling_scheduled",
+                      "qualified",
+                      "application_trial",
+                    ],
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          enrolled: {
+            $sum: {
+              $cond: [{ $in: ["$status", ["enrolled", "converted"]] }, 1, 0],
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+    ]);
+
+    const teamMembers = teamStatsAgg.map((item) => {
+      const u = item.user || {};
+      const name =
+        `${u.firstName || ""} ${u.lastName || ""}`.trim() ||
+        u.email ||
+        "Counselor";
+      const assigned = item.totalAssigned || 0;
+      const enrolled = item.enrolled || 0;
+      const rate = assigned > 0 ? Math.round((enrolled / assigned) * 100) : 0;
+
+      return {
+        userId: item._id,
+        name,
+        email: u.email,
+        designation: u.designation || "Counselor",
+        assigned,
+        contacted: item.contacted || 0,
+        inCounseling: item.inCounseling || 0,
+        enrolled,
+        conversionRate: rate,
+      };
+    });
+
+    teamMembers.sort(
+      (a, b) => b.enrolled - a.enrolled || b.assigned - a.assigned,
+    );
+
+    // 4. Today's Team Activity Totals
+    const [todayCalls, todayChats, todayNotes, todayEnrolled] =
+      await Promise.all([
+        LeadActivity.countDocuments({
+          organizationId: orgObjectId,
+          isDeleted: false,
+          createdAt: { $gte: startOfToday },
+          type: { $in: ["call", "phone_call"] },
+        }),
+        LeadActivity.countDocuments({
+          organizationId: orgObjectId,
+          isDeleted: false,
+          createdAt: { $gte: startOfToday },
+          type: "whatsapp",
+        }),
+        LeadNote.countDocuments({
+          organizationId: orgObjectId,
+          createdAt: { $gte: startOfToday },
+        }),
+        this.leadRepository.count({
+          $or: [{ organizationId: orgObjectId }, { organizationId: orgId }],
+          isDeleted: false,
+          tenantVertical: "education",
+          status: { $in: ["enrolled", "converted"] },
+          updatedAt: { $gte: startOfToday },
+        }),
+      ]);
+
+    return {
+      todayStats: {
+        callsMade: todayCalls,
+        whatsappSent: todayChats,
+        notesLogged: todayNotes,
+        enrolledToday: todayEnrolled,
+      },
+      recentActivities: recentActivities.filter((a) => a.leadId),
+      recentNotes: recentNotes.filter((n) => n.leadId),
+      teamMembers,
     };
   }
 

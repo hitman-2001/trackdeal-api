@@ -92,6 +92,29 @@ async function settingsRoutes(fastify, opts) {
     controller.updateNotifications,
   );
 
+  // Organisation Branding & Theme (Accessible to ALL authenticated members of the organization)
+  fastify.get(
+    '/branding',
+    {
+      preHandler: [authenticate],
+      schema: { tags: ['Settings'], summary: 'Get organization branding and theme for authenticated user' },
+    },
+    async (req, reply) => {
+      const actor = req.user;
+      if (!actor.organizationId) {
+        return reply.send({ branding: null });
+      }
+      const org = await tenantContext.run({ isSystemOverride: true }, () =>
+        Organization.findById(actor.organizationId).select('name vertical branding').lean()
+      );
+      return reply.send({
+        organizationId: actor.organizationId,
+        name: org?.name || '',
+        branding: org?.branding || null,
+      });
+    }
+  );
+
   // Organisation Settings Routes
   fastify.get(
     "/org",

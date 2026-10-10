@@ -19,6 +19,11 @@ class EducationController extends BaseController {
     return this.ok(reply, data);
   }
 
+  async teamActivity(request, reply) {
+    const data = await this.educationService.getTeamActivity(this.getUser(request));
+    return this.ok(reply, data);
+  }
+
   async listClasses(request, reply) {
     const query = this.getPagination(request.query);
     const result = await this.educationService.listClasses({ ...request.query, ...query }, this.getUser(request));

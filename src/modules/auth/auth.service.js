@@ -188,6 +188,7 @@ class AuthService extends BaseService {
       sanitizedUser.tenantVertical = tokenPayload.tenantVertical || tokenPayload.tenantDomain;
       sanitizedUser.enabledModules = tokenPayload.enabledModules;
       sanitizedUser.featuresFlags = tokenPayload.featuresFlags;
+      sanitizedUser.branding = tokenPayload.branding;
       sanitizedUser.forcePasswordChange = !!user.forcePasswordChange;
 
       return {
@@ -286,6 +287,7 @@ class AuthService extends BaseService {
         sanitizedUser.tenantVertical = tokenPayload.tenantVertical || tokenPayload.tenantDomain;
         sanitizedUser.enabledModules = tokenPayload.enabledModules;
         sanitizedUser.featuresFlags = tokenPayload.featuresFlags;
+        sanitizedUser.branding = tokenPayload.branding;
         sanitizedUser.forcePasswordChange = !user.forcePasswordChange;
 
         return {
@@ -384,6 +386,7 @@ class AuthService extends BaseService {
     sanitized.tenantVertical = tokenPayload.tenantVertical || tokenPayload.tenantDomain;
     sanitized.enabledModules = tokenPayload.enabledModules;
     sanitized.featuresFlags = tokenPayload.featuresFlags;
+    sanitized.branding = tokenPayload.branding;
     return sanitized;
   }
 
@@ -511,10 +514,11 @@ class AuthService extends BaseService {
     let enabledModules = [];
     let featuresFlags = {};
     let orgVertical = null;
+    let orgBranding = null;
     if (user.organizationId && require('mongoose').Types.ObjectId.isValid(user.organizationId)) {
       const { Organization } = require('../organization/organization.model');
       const org = await tenantContext.run({ isSystemOverride: true }, () =>
-        Organization.findById(user.organizationId).select('organizationType tenantId vertical').lean()
+        Organization.findById(user.organizationId).select('organizationType tenantId vertical branding').lean()
       );
       if (org?.organizationType) {
         organizationType = org.organizationType;
@@ -524,6 +528,9 @@ class AuthService extends BaseService {
       }
       if (org?.vertical) {
         orgVertical = org.vertical;
+      }
+      if (org?.branding) {
+        orgBranding = org.branding;
       }
     }
 
@@ -568,6 +575,7 @@ class AuthService extends BaseService {
       tenantVertical: tenantDomain,
       enabledModules,
       featuresFlags,
+      branding: orgBranding,
       organizationId: user.organizationId,
       organizationType,
       branchId: user.branchId,

@@ -44,11 +44,13 @@ const createOrganizationSchema = {
     },
     branding: {
       type: 'object',
+      additionalProperties: true,
       properties: {
-        primaryColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
-        secondaryColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+        primaryColor: { type: 'string' },
+        secondaryColor: { type: 'string' },
         logoUrl: { type: 'string' },
         faviconUrl: { type: 'string' },
+        themeTokens: { type: 'object', additionalProperties: true },
       },
     },
     settings: {
@@ -90,11 +92,13 @@ const updateOrganizationSchema = {
     },
     branding: {
       type: 'object',
+      additionalProperties: true,
       properties: {
-        primaryColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
-        secondaryColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+        primaryColor: { type: 'string' },
+        secondaryColor: { type: 'string' },
         logoUrl: { type: 'string' },
         faviconUrl: { type: 'string' },
+        themeTokens: { type: 'object', additionalProperties: true },
       },
     },
     settings: {
