@@ -670,7 +670,10 @@ class AuthService extends BaseService {
     if (!org || org.isDeleted) {
       throw new BusinessRuleError('Organization not found or inactive.', 'ORGANIZATION_INACTIVE');
     }
-    const quota = org.maxUsers || org.subscription?.maxUsers || 10;
+    const limits = [];
+    if (typeof org.maxUsers === 'number' && org.maxUsers > 0) limits.push(org.maxUsers);
+    if (typeof org.subscription?.maxUsers === 'number' && org.subscription.maxUsers > 0) limits.push(org.subscription.maxUsers);
+    const quota = limits.length > 0 ? Math.min(...limits) : 10;
     const currentActiveUsers = await tenantContext.run({ isSystemOverride: true }, () =>
       User.countDocuments({ organizationId: org._id, isDeleted: false })
     );

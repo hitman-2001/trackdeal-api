@@ -174,6 +174,16 @@ class OrganizationService extends BaseService {
     // Prevent code modification
     delete data.code;
 
+    // Synchronize maxUsers across root and subscription subdocument
+    if (data.maxUsers !== undefined) {
+      if (!data.subscription) {
+        data.subscription = org.subscription?.toObject ? org.subscription.toObject() : { ...(org.subscription || {}) };
+      }
+      data.subscription.maxUsers = Number(data.maxUsers);
+    } else if (data.subscription?.maxUsers !== undefined) {
+      data.maxUsers = Number(data.subscription.maxUsers);
+    }
+
     const oldValues = org.toObject();
 
     // Update inside bypass context

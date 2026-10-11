@@ -371,6 +371,10 @@ class AdminService extends BaseService {
         org.maxUsers = Number(data.maxUsers);
         if (!org.subscription) org.subscription = {};
         org.subscription.maxUsers = Number(data.maxUsers);
+      } else if (data.subscription?.maxUsers !== undefined) {
+        org.maxUsers = Number(data.subscription.maxUsers);
+        if (!org.subscription) org.subscription = {};
+        org.subscription.maxUsers = Number(data.subscription.maxUsers);
       }
       if (data.phone) org.phone = data.phone;
       if (data.city) org.city = data.city;
@@ -522,7 +526,10 @@ class AdminService extends BaseService {
       if (!org || org.isDeleted) throw new NotFoundError('Organization', organizationId);
 
       // Enforce max users quota for organization
-      const quota = org.maxUsers || org.subscription?.maxUsers || 10;
+      const limits = [];
+      if (typeof org.maxUsers === 'number' && org.maxUsers > 0) limits.push(org.maxUsers);
+      if (typeof org.subscription?.maxUsers === 'number' && org.subscription.maxUsers > 0) limits.push(org.subscription.maxUsers);
+      const quota = limits.length > 0 ? Math.min(...limits) : 10;
       const currentCount = await User.countDocuments({ organizationId: org._id, isDeleted: false });
       if (currentCount >= quota) {
         throw new BusinessRuleError(

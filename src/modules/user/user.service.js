@@ -188,6 +188,20 @@ class UserService extends BaseService {
    * Soft-delete a user.
    */
   async deleteUser(id, actor) {
+    const { ROLES } = require('../../shared/constants/roles-permissions.constants');
+    const isOrgOrSuperAdmin = [
+      ROLES.ORG_ADMIN,
+      'org_admin',
+      'organization_admin',
+      ROLES.SUPER_ADMIN,
+      'super_admin',
+      'system_admin',
+    ].includes(actor.role);
+
+    if (!isOrgOrSuperAdmin) {
+      throw new ForbiddenError('Only an Organization Administrator can delete user accounts.');
+    }
+
     const user = await this.userRepository.findByIdOrFail(id, 'User');
     this._enforceBranchWriteIsolation(user, actor);
 
@@ -684,19 +698,22 @@ class UserService extends BaseService {
 
     const { User } = require('./user.model');
     const activeUsersCount = await tenantContext.run({ isSystemOverride: true }, () =>
-      User.countDocuments({ organizationId, isDeleted: false })
+      User.countDocuments({ organizationId: org._id, isDeleted: false })
     );
     
     const { UserInvitation } = require('./user-invitation.model');
     const pendingInvitesCount = await tenantContext.run({ isSystemOverride: true }, () =>
       UserInvitation.countDocuments({
-        organizationId,
+        organizationId: org._id,
         status: 'pending',
         expiresAt: { $gt: new Date() },
       })
     );
 
-    const quota = org.maxUsers || org.subscription?.maxUsers || 10;
+    const limits = [];
+    if (typeof org.maxUsers === 'number' && org.maxUsers > 0) limits.push(org.maxUsers);
+    if (typeof org.subscription?.maxUsers === 'number' && org.subscription.maxUsers > 0) limits.push(org.subscription.maxUsers);
+    const quota = limits.length > 0 ? Math.min(...limits) : 10;
 
     if (activeUsersCount + pendingInvitesCount >= quota) {
       throw new BusinessRuleError(

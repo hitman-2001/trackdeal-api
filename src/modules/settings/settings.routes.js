@@ -215,6 +215,10 @@ async function settingsRoutes(fastify, opts) {
     schema: { body: assignRoleSchema },
     handler: userController.assignRole.bind(userController),
   });
+  fastify.delete("/users/:id", {
+    preHandler: [authorize(PERMISSIONS.USERS_DELETE)],
+    handler: userController.remove.bind(userController),
+  });
 
   // Role Settings Routes
   fastify.get("/roles", {
