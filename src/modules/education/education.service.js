@@ -1764,7 +1764,8 @@ class EducationService extends BaseService {
     const classId = data.classId || lead.classInterestId;
     if (!classId)
       throw new BusinessRuleError("Select a class to enroll this student.");
-    await this.classRepository.findByIdOrFail(classId, "Class");
+    const classEntity = await this.classRepository.findByIdOrFail(classId, "Class");
+    const className = classEntity?.name || "Class";
 
     const student = await this.studentRepository.create({
       firstName: lead.firstName,
@@ -1797,10 +1798,10 @@ class EducationService extends BaseService {
       entityId: student._id,
       module: "Education",
       description:
-        `Enrolled student ${student.firstName} ${student.lastName || ""} into class ${classId}`.trim(),
+        `Enrolled student ${student.firstName} ${student.lastName || ""} into class ${className}`.trim(),
       newValues: {
-        studentId: student._id,
-        classId,
+        studentName: `${student.firstName} ${student.lastName || ""}`.trim(),
+        className,
         enrollmentDate: student.enrollmentDate,
       },
     });

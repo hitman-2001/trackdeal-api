@@ -230,7 +230,17 @@ class UserService extends BaseService {
 
     if (user.status === 'active') return user;
 
-    const updated = await this.userRepository.update(id, { status: 'active', updatedBy: actor.id });
+    const updated = await this.userRepository.update(
+      id,
+      { status: 'active', updatedBy: actor.id },
+      {
+        new: true,
+        populate: [
+          { path: 'roleId', select: 'name code' },
+          { path: 'branchId', select: 'name code' },
+        ],
+      }
+    );
 
     await this.logAudit({
       action: AUDIT_ACTIONS.UPDATE,
@@ -254,7 +264,17 @@ class UserService extends BaseService {
 
     if (user.status === 'inactive') return user;
 
-    const updated = await this.userRepository.update(id, { status: 'inactive', updatedBy: actor.id });
+    const updated = await this.userRepository.update(
+      id,
+      { status: 'inactive', updatedBy: actor.id },
+      {
+        new: true,
+        populate: [
+          { path: 'roleId', select: 'name code' },
+          { path: 'branchId', select: 'name code' },
+        ],
+      }
+    );
 
     await this.logAudit({
       action: AUDIT_ACTIONS.UPDATE,
