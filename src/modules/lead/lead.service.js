@@ -27,6 +27,7 @@ const { User } = require("../user/user.model");
 const { Organization } = require("../organization/organization.model");
 const { Customer } = require("../customer/customer.model");
 const { Lead } = require("./lead.model");
+require("../education/education.model");
 
 // ---------------------------------------------------------------------------
 // LeadService — Owner: Lead Module
@@ -219,6 +220,7 @@ class LeadService extends BaseService {
         .populate("assignedTo", "firstName lastName email branchId")
         .populate("agentId", "name officeName phone email city agentType")
         .populate("agentIds", "name officeName phone email city agentType")
+        .populate("classInterestId", "name code")
         .lean();
       return [count, docs];
     });
@@ -250,6 +252,7 @@ class LeadService extends BaseService {
         .populate("agentId", "name officeName phone email city reraNumber agentType")
         .populate("agentIds", "name officeName phone email city reraNumber agentType")
         .populate("customerId", "firstName lastName mobile email alternativeMobile address city status")
+        .populate("classInterestId", "name code")
         .lean();
     });
 
