@@ -185,7 +185,7 @@ class UserService extends BaseService {
   }
 
   /**
-   * Soft-delete a user.
+   * Soft-delete a user and reassign their leads to the organization administrator.
    */
   async deleteUser(id, actor) {
     const { ROLES } = require('../../shared/constants/roles-permissions.constants');
@@ -209,6 +209,125 @@ class UserService extends BaseService {
       throw new BusinessRuleError('You cannot delete your own account');
     }
 
+    // 1. Resolve Organization Administrator to receive the reassigned leads
+    const adminUser = await this._resolveOrgAdminForReassignment(user, actor);
+
+    let reassignedLeadsCount = 0;
+    if (adminUser && String(adminUser._id || adminUser.id) !== String(id)) {
+      const { Lead, LeadActivity, LeadAssignment, LeadFollowUp } = require('../lead/lead.model');
+
+      const adminId = adminUser._id || adminUser.id;
+      const adminName = `${adminUser.firstName || ''} ${adminUser.lastName || ''}`.trim() || adminUser.email || 'Admin';
+      const reason = `Auto-reassigned to Admin (${adminName}) upon deletion of user '${user.email}'`;
+      const now = new Date();
+
+      // Find all non-deleted leads assigned to this user (both assignedTo and agentId)
+      const leadsToReassign = await Lead.find({
+        $or: [{ assignedTo: user._id }, { agentId: user._id }],
+        isDeleted: false,
+      }).select('_id branchId status assignedTo agentId').lean();
+
+      if (leadsToReassign.length > 0) {
+        reassignedLeadsCount = leadsToReassign.length;
+        const leadIds = leadsToReassign.map((l) => l._id);
+
+        // Bulk update leads to Admin
+        await Lead.updateMany(
+          { _id: { $in: leadIds } },
+          {
+            $set: {
+              assignedTo: adminId,
+              updatedBy: actor.id,
+            },
+            $push: {
+              assignmentHistory: {
+                assignedTo: adminId,
+                assignedBy: actor.id,
+                assignedAt: now,
+                reason,
+              },
+            },
+          }
+        );
+
+        // Reassign pending follow-ups belonging to these leads or assigned to this user
+        await LeadFollowUp.updateMany(
+          {
+            $or: [
+              { assignedTo: user._id },
+              { leadId: { $in: leadIds }, assignedTo: user._id },
+            ],
+            status: { $in: ['pending', 'scheduled'] },
+            isDeleted: false,
+          },
+          {
+            $set: {
+              assignedTo: adminId,
+              updatedBy: actor.id,
+            },
+          }
+        );
+
+        // Record LeadAssignment and LeadActivity audit logs
+        const assignmentDocs = leadsToReassign.map((l) => ({
+          organizationId: user.organizationId,
+          branchId: l.branchId || null,
+          leadId: l._id,
+          assignedTo: adminId,
+          assignedBy: actor.id,
+          reason,
+          createdAt: now,
+          updatedAt: now,
+        }));
+
+        const activityDocs = leadsToReassign.map((l) => ({
+          organizationId: user.organizationId,
+          branchId: l.branchId || null,
+          leadId: l._id,
+          type: 'assignment',
+          description: `Lead automatically reassigned to Admin (${adminName}) due to deletion of user '${user.email}'`,
+          performedBy: actor.id,
+          metadata: {
+            previousAssignee: user._id,
+            newAssignee: adminId,
+            reason,
+          },
+          createdAt: now,
+          updatedAt: now,
+        }));
+
+        if (assignmentDocs.length > 0) {
+          await LeadAssignment.insertMany(assignmentDocs, { ordered: false }).catch(() => {});
+        }
+        if (activityDocs.length > 0) {
+          await LeadActivity.insertMany(activityDocs, { ordered: false }).catch(() => {});
+        }
+      }
+
+      // Reassign pending operational tasks if Task collection is in use
+      try {
+        const { Task } = require('../task/task.model');
+        if (Task) {
+          await Task.updateMany(
+            {
+              assignedTo: user._id,
+              status: { $in: ['pending', 'in_progress'] },
+              isDeleted: false,
+            },
+            {
+              $set: {
+                assignedTo: adminId,
+                updatedBy: actor.id,
+              },
+            }
+          );
+        }
+      } catch (e) {
+        // Task reassignment best-effort
+      }
+    }
+
+    // 2. Soft-delete the user
     await this.userRepository.softDelete(id, actor.id);
 
     await this.logAudit({
@@ -216,8 +335,99 @@ class UserService extends BaseService {
       entity: 'User',
       entityId: id,
       userId: actor.id,
-      description: `User '${user.email}' soft-deleted`,
+      description: `User '${user.email}' soft-deleted${reassignedLeadsCount > 0 ? ` (${reassignedLeadsCount} leads reassigned to Admin)` : ''}`,
     });
+
+    return {
+      deletedUserId: id,
+      reassignedLeadsCount,
+      adminId: adminUser?._id || adminUser?.id || null,
+    };
+  }
+
+  /**
+   * Helper to resolve the active Organization Administrator to whom leads
+   * will be reassigned when a staff member or user is deleted.
+   */
+  async _resolveOrgAdminForReassignment(user, actor) {
+    const userOrgId = user.organizationId;
+    const deletedUserId = String(user._id || user.id);
+
+    // 1. If actor is an active org_admin of this organization
+    if (
+      actor &&
+      actor.id &&
+      String(actor.id) !== deletedUserId &&
+      ['org_admin', 'organization_admin'].includes(actor.role) &&
+      (!actor.organizationId || String(actor.organizationId) === String(userOrgId))
+    ) {
+      const activeActor = await this.userRepository.model.findOne({
+        _id: actor.id,
+        isDeleted: false,
+        status: { $ne: 'inactive' },
+      });
+      if (activeActor) return activeActor;
+    }
+
+    // 2. Check Organization ownerId
+    if (userOrgId) {
+      try {
+        const { Organization } = require('../organization/organization.model');
+        const org = await Organization.findById(userOrgId).lean();
+        if (org && org.ownerId && String(org.ownerId) !== deletedUserId) {
+          const owner = await this.userRepository.model.findOne({
+            _id: org.ownerId,
+            isDeleted: false,
+            status: { $ne: 'inactive' },
+          });
+          if (owner) return owner;
+        }
+      } catch (err) {
+        // Fall through
+      }
+    }
+
+    // 3. Search for any active user with org_admin role in this organization
+    if (userOrgId) {
+      try {
+        const { Role } = require('../authorization/role.model');
+        const orgAdminRole = await Role.findOne({
+          code: { $in: ['org_admin', 'organization_admin'] },
+        }).lean();
+
+        if (orgAdminRole) {
+          const adminInOrg = await this.userRepository.model.findOne({
+            organizationId: userOrgId,
+            roleId: orgAdminRole._id,
+            _id: { $ne: user._id },
+            isDeleted: false,
+            status: { $ne: 'inactive' },
+          });
+          if (adminInOrg) return adminInOrg;
+        }
+
+        // Fallback: any active user in the organization that is not the deleted user
+        const anyActiveOrgUser = await this.userRepository.model.findOne({
+          organizationId: userOrgId,
+          _id: { $ne: user._id },
+          isDeleted: false,
+          status: { $ne: 'inactive' },
+        }).sort({ createdAt: 1 });
+        if (anyActiveOrgUser) return anyActiveOrgUser;
+      } catch (err) {
+        // Fall through
+      }
+    }
+
+    // 4. Fallback to actor if actor is not the deleted user
+    if (actor?.id && String(actor.id) !== deletedUserId) {
+      return this.userRepository.model.findOne({
+        _id: actor.id,
+        isDeleted: false,
+      });
+    }
+
+    return null;
   }
 
   /**

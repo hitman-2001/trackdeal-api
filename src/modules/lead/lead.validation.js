@@ -300,6 +300,25 @@ const bulkAssignSchema = {
   },
 };
 
+const distributeBatchRoundRobinSchema = {
+  type: "object",
+  required: ["leadIds"],
+  additionalProperties: false,
+  properties: {
+    leadIds: {
+      type: "array",
+      items: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+      minItems: 1,
+    },
+    staffIds: {
+      type: "array",
+      items: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+    },
+    batchSize: { type: "integer", minimum: 1, maximum: 500 },
+    reason: { type: "string", maxLength: 200 },
+  },
+};
+
 const markLostSchema = {
   type: "object",
   required: ["reason"],
@@ -320,5 +339,7 @@ module.exports = {
   updateActivitySchema,
   addNoteSchema,
   bulkAssignSchema,
+  distributeBatchRoundRobinSchema,
   markLostSchema,
 };
+

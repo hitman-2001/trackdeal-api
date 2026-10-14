@@ -82,6 +82,23 @@ class LeadController extends BaseController {
     return this.ok(reply, leads, "Leads assigned successfully in bulk");
   }
 
+  async distributeBatchRoundRobin(request, reply) {
+    const result = await this.leadService.distributeLeadsBatchRoundRobin(
+      {
+        leadIds: request.body.leadIds,
+        staffIds: request.body.staffIds,
+        batchSize: request.body.batchSize,
+        reason: request.body.reason,
+      },
+      this.getUser(request)
+    );
+    return this.ok(
+      reply,
+      result,
+      `Leads distributed successfully in fixed batches of ${result.batchSize}`
+    );
+  }
+
   async changeStage(request, reply) {
     const lead = await this.leadService.changeStage(
       request.params.id,

@@ -20,6 +20,7 @@ const {
   logActivitySchema,
   addNoteSchema,
   bulkAssignSchema,
+  distributeBatchRoundRobinSchema,
   markLostSchema,
 } = require("./lead.validation");
 
@@ -142,6 +143,19 @@ async function leadRoutes(fastify, opts) {
       },
     },
     controller.bulkAssign,
+  );
+
+  fastify.post(
+    "/distribute-batch-round-robin",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_ASSIGN)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Distribute leads in fixed batches using round-robin",
+        body: distributeBatchRoundRobinSchema,
+      },
+    },
+    controller.distributeBatchRoundRobin,
   );
 
   fastify.post(

@@ -129,6 +129,12 @@ async function educationRoutes(fastify) {
     schema: { tags: ['Education'], summary: 'Enroll a student lead into a class' },
     handler: (req, reply) => controller.enrollLead(req, reply),
   });
+
+  fastify.post('/leads/distribute-batch-round-robin', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_ASSIGN)],
+    schema: { tags: ['Education'], summary: 'Distribute student leads in fixed batches using round-robin' },
+    handler: (req, reply) => controller.distributeBatchRoundRobin(req, reply),
+  });
 }
 
 module.exports = educationRoutes;

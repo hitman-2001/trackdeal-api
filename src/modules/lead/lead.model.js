@@ -38,6 +38,12 @@ const leadSchema = new mongoose.Schema(
     },
     parentName: { type: String, trim: true },
     parentMobile: { type: String, trim: true },
+    schoolName: { type: String, trim: true, default: "" },
+    institutionType: { type: String, trim: true, default: "" },
+    educationBoard: { type: String, trim: true, default: "" },
+    standard: { type: String, trim: true, default: "" },
+    academicStream: { type: String, trim: true, default: "" },
+    currentCoaching: { type: String, trim: true, default: "" },
     classInterestId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "EducationClass",
@@ -273,6 +279,8 @@ const leadSchema = new mongoose.Schema(
     // Activity & Follow-up Tracking
     lastActivityType: { type: String },
     lastActivityAt: { type: Date },
+    lastActionAt: { type: Date, default: null, index: true },
+    isAttended: { type: Boolean, default: false, index: true },
     nextFollowUpAt: { type: Date },
 
     // Loss Tracking
@@ -308,7 +316,10 @@ leadSchema.index({ organizationId: 1, branchId: 1, status: 1 });
 leadSchema.index({ organizationId: 1, source: 1, createdAt: -1 });
 leadSchema.index({ organizationId: 1, score: -1 });
 leadSchema.index({ organizationId: 1, tags: 1 });
-leadSchema.index({ organizationId: 1, createdAt: -1 });
+leadSchema.index({ organizationId: 1, standard: 1 });
+leadSchema.index({ organizationId: 1, educationBoard: 1 });
+leadSchema.index({ organizationId: 1, institutionType: 1 });
+leadSchema.index({ organizationId: 1, academicStream: 1 });
 leadSchema.index(
   { firstName: "text", lastName: "text", mobile: "text", email: "text" },
   { name: "lead_text_search" }

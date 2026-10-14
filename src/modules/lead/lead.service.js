@@ -200,6 +200,16 @@ class LeadService extends BaseService {
     if (query.status) filter.status = query.status;
     if (query.assignedTo) filter.assignedTo = query.assignedTo;
     if (query.source) filter.source = query.source;
+    if (query.institutionType) filter.institutionType = query.institutionType;
+    if (query.educationBoard) filter.educationBoard = query.educationBoard;
+    if (query.standard) filter.standard = query.standard;
+    if (query.academicStream) filter.academicStream = query.academicStream;
+    if (query.schoolName) {
+      filter.schoolName = new RegExp(
+        String(query.schoolName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i"
+      );
+    }
     if (query.search) {
       filter.$text = { $search: query.search };
     }
@@ -207,14 +217,17 @@ class LeadService extends BaseService {
     const page = parseInt(query.page, 10) || 1;
     const limit = Math.min(parseInt(query.limit, 10) || 20, 100);
     const skip = (page - 1) * limit;
-    const sortField = query.sort || "createdAt";
+    const sortField = query.sort;
     const sortOrder = query.order === "asc" || query.order === 1 ? 1 : -1;
+    const sortOptions = sortField
+      ? { [sortField]: sortOrder }
+      : { lastActionAt: 1, createdAt: -1 };
 
     // Use system override locally to query cross-org transferred records alongside own records
     const [total, rows] = await tenantContext.run({ isSystemOverride: true }, async () => {
       const count = await Lead.countDocuments(filter);
       const docs = await Lead.find(filter)
-        .sort({ [sortField]: sortOrder })
+        .sort(sortOptions)
         .skip(skip)
         .limit(limit)
         .populate("assignedTo", "firstName lastName email branchId")
@@ -583,8 +596,14 @@ class LeadService extends BaseService {
       }
     }
 
+    const isReassignment = data.assignedTo && data.assignedTo !== lead.assignedTo?.toString();
+    const triageFields = isReassignment
+      ? { lastActionAt: null, isAttended: false }
+      : { lastActionAt: new Date(), lastActivityAt: new Date(), isAttended: true };
+
     const updated = await this.leadRepository.update(id, {
       ...data,
+      ...triageFields,
       updatedBy: actor.id,
     });
 
@@ -843,6 +862,10 @@ class LeadService extends BaseService {
     const updated = await this.leadRepository.update(id, {
       status,
       ...(status === "lost" ? { lostReason, lostNotes, lostAt: new Date() } : {}),
+      lastActionAt: new Date(),
+      lastActivityAt: new Date(),
+      lastActivityType: "stage_change",
+      isAttended: true,
       updatedBy: actor.id,
     });
 
@@ -927,6 +950,8 @@ class LeadService extends BaseService {
     const updated = await this.leadRepository.update(id, {
       assignedTo: assigneeId,
       status: lead.status === "new" ? "assigned" : lead.status,
+      lastActionAt: null,
+      isAttended: false,
       updatedBy: actor.id,
       $push: {
         assignmentHistory: {
@@ -992,6 +1017,114 @@ class LeadService extends BaseService {
       updatedLeads.push(updated);
     }
     return updatedLeads;
+  }
+
+  /**
+   * Distribute leads in fixed batches using round-robin across staff members.
+   * Default batchSize is 10 (e.g. 1st 10 -> Staff 1, 2nd 10 -> Staff 2, and repeats).
+   */
+  async distributeLeadsBatchRoundRobin({ leadIds, staffIds, batchSize = 10, reason }, actor) {
+    const adminRoles = ["super_admin", "org_admin", "admin"];
+    const canAssign =
+      adminRoles.includes(actor?.role) ||
+      (actor?.permissions &&
+        (actor.permissions.includes("leads.assign") ||
+          actor.permissions.includes("*")));
+    if (!canAssign) {
+      throw new ForbiddenError(
+        "Access Denied: You do not have permission to distribute leads."
+      );
+    }
+
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      throw new BusinessRuleError("No leads provided for batch distribution.");
+    }
+
+    const { User } = require("../user/user.model");
+    let targetStaffMembers = [];
+
+    if (Array.isArray(staffIds) && staffIds.length > 0) {
+      targetStaffMembers = await User.find({
+        _id: { $in: staffIds },
+        organizationId: actor.organizationId,
+        status: "active",
+        isDeleted: { $ne: true },
+      })
+        .select("_id firstName lastName email")
+        .lean();
+    } else {
+      // Default: distribute among all active users in the organization
+      targetStaffMembers = await User.find({
+        organizationId: actor.organizationId,
+        status: "active",
+        isDeleted: { $ne: true },
+      })
+        .select("_id firstName lastName email")
+        .lean();
+    }
+
+    if (targetStaffMembers.length === 0) {
+      throw new BusinessRuleError(
+        "No active staff members found to assign leads to."
+      );
+    }
+
+    const effectiveBatchSize = Math.max(1, parseInt(batchSize, 10) || 10);
+    const staffCount = targetStaffMembers.length;
+    const assignmentMap = new Map();
+    const staffInfoMap = new Map();
+
+    for (const member of targetStaffMembers) {
+      const mid = String(member._id || member.id);
+      assignmentMap.set(mid, []);
+      staffInfoMap.set(mid, member);
+    }
+
+    // Fixed-Batch Round-Robin Assignment
+    // e.g. leads 0..9 -> Staff 0, leads 10..19 -> Staff 1, leads 20..29 -> Staff 0 (if 2 staff)
+    for (let i = 0; i < leadIds.length; i++) {
+      const batchIdx = Math.floor(i / effectiveBatchSize);
+      const staffIdx = batchIdx % staffCount;
+      const targetMember = targetStaffMembers[staffIdx];
+      const memberId = String(targetMember._id || targetMember.id);
+      assignmentMap.get(memberId).push(leadIds[i]);
+    }
+
+    const distributionSummary = [];
+    const updatedLeadList = [];
+
+    for (const [staffId, assignedBatchIds] of assignmentMap.entries()) {
+      if (assignedBatchIds.length === 0) continue;
+      const staffObj = staffInfoMap.get(staffId);
+      const staffName =
+        [staffObj.firstName, staffObj.lastName].filter(Boolean).join(" ").trim() ||
+        staffObj.email;
+
+      for (const leadId of assignedBatchIds) {
+        const updated = await this.assignLead(
+          leadId,
+          staffId,
+          actor,
+          reason || `Batch Round-Robin Distribution (Batch of ${effectiveBatchSize})`
+        );
+        updatedLeadList.push(updated);
+      }
+
+      distributionSummary.push({
+        staffId,
+        staffName,
+        assignedCount: assignedBatchIds.length,
+        leadIds: assignedBatchIds,
+      });
+    }
+
+    return {
+      totalLeads: leadIds.length,
+      batchSize: effectiveBatchSize,
+      batchesCount: Math.ceil(leadIds.length / effectiveBatchSize),
+      staffCount: distributionSummary.length,
+      distribution: distributionSummary,
+    };
   }
 
   /**
@@ -1502,6 +1635,10 @@ class LeadService extends BaseService {
     }
 
     lead.nextFollowUpAt = new Date(followUpData.scheduledAt);
+    lead.lastActionAt = new Date();
+    lead.lastActivityAt = new Date();
+    lead.lastActivityType = followUpData.type || "follow_up";
+    lead.isAttended = true;
     await lead.save();
 
     await this.recalculateLeadScore(id);
@@ -1544,7 +1681,7 @@ class LeadService extends BaseService {
    */
   async deleteLead(id, actor) {
     const adminRoles = ["super_admin", "org_admin", "admin"];
-    const canDelete = adminRoles.includes(actor?.role) || (actor?.permissions && (actor.permissions.includes('leads.delete') || actor.permissions.includes('*')));
+    const canDelete = adminRoles.includes(actor?.role) || (actor?.permissions && (actor.permissions.includes('leads.delete') || actor.permissions.includes('leads.bulk_delete') || actor.permissions.includes('*')));
     if (!canDelete) {
       throw new ForbiddenError("Access Denied: You do not have permission to delete leads.");
     }

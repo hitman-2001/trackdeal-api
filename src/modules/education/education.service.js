@@ -1435,6 +1435,16 @@ class EducationService extends BaseService {
     }
     if (query.subStatus) filter.subStatus = query.subStatus;
     if (query.classInterestId) filter.classInterestId = query.classInterestId;
+    if (query.institutionType) filter.institutionType = query.institutionType;
+    if (query.educationBoard) filter.educationBoard = query.educationBoard;
+    if (query.standard) filter.standard = query.standard;
+    if (query.academicStream) filter.academicStream = query.academicStream;
+    if (query.schoolName) {
+      filter.schoolName = new RegExp(
+        String(query.schoolName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i"
+      );
+    }
     if (query.search) {
       const rx = new RegExp(
         String(query.search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
@@ -1448,10 +1458,16 @@ class EducationService extends BaseService {
         { parentName: rx },
       ];
     }
+    const sortField = query.sort;
+    const sortOrder = query.order === "asc" || query.order === 1 ? 1 : -1;
+    const sortOptions = sortField
+      ? { [sortField]: sortOrder }
+      : { lastActionAt: 1, createdAt: -1 };
+
     const result = await this.leadRepository.paginate(filter, {
       page: query.page,
       limit: query.limit,
-      sort: { createdAt: -1 },
+      sort: sortOptions,
       populate: [
         { path: "classInterestId", select: "name code subject" },
         {
@@ -1477,10 +1493,17 @@ class EducationService extends BaseService {
     this._assertEducation(actor);
     const firstName = String(data?.firstName || "").trim();
     const mobile = String(data?.mobile || "").trim();
-    if (!firstName || !mobile)
+    const schoolName = String(data?.schoolName || "").trim();
+    if (!firstName || !mobile) {
       throw new BusinessRuleError(
         "Student lead first name and mobile are required.",
       );
+    }
+    if (!schoolName) {
+      throw new BusinessRuleError(
+        "School name is required.",
+      );
+    }
     const {
       ROLES,
     } = require("../../shared/constants/roles-permissions.constants");
@@ -1514,6 +1537,13 @@ class EducationService extends BaseService {
       firstName,
       lastName: data.lastName || "",
       mobile,
+      alternativeMobile: data.alternativeMobile || "",
+      schoolName,
+      institutionType: data.institutionType || "",
+      educationBoard: data.educationBoard || "",
+      standard: data.standard || "",
+      academicStream: data.academicStream || "",
+      currentCoaching: data.currentCoaching || "",
       email: data.email || "",
       source: data.source || "manual_entry",
       parentName: data.parentName || "",
@@ -1596,11 +1626,22 @@ class EducationService extends BaseService {
       }
     }
 
+    if (data.schoolName !== undefined && !String(data.schoolName).trim()) {
+      throw new BusinessRuleError("School name cannot be empty.");
+    }
+
     const patch = { updatedBy: actor.id };
     [
       "firstName",
       "lastName",
       "mobile",
+      "alternativeMobile",
+      "schoolName",
+      "institutionType",
+      "educationBoard",
+      "standard",
+      "academicStream",
+      "currentCoaching",
       "email",
       "source",
       "parentName",
@@ -1702,6 +1743,25 @@ class EducationService extends BaseService {
       }
       if (convertedStudentId) {
         patch.convertedStudentId = convertedStudentId;
+      }
+    }
+
+    const isReassignment =
+      data.assignedTo !== undefined &&
+      String(data.assignedTo || "") !==
+        String(lead.assignedTo?._id || lead.assignedTo || "");
+
+    if (isReassignment) {
+      // Reassigned to staff -> fresh unattended lead for the recipient
+      patch.lastActionAt = null;
+      patch.isAttended = false;
+    } else {
+      // Action performed by staff -> stamp lastActionAt so lead moves to bottom of active queue!
+      patch.lastActionAt = new Date();
+      patch.lastActivityAt = new Date();
+      patch.isAttended = true;
+      if (data.status && data.status !== lead.status) {
+        patch.lastActivityType = "status_change";
       }
     }
 
@@ -1825,6 +1885,7 @@ class EducationService extends BaseService {
       adminRoles.includes(actor?.role) ||
       (actor?.permissions &&
         (actor.permissions.includes("leads.delete") ||
+          actor.permissions.includes("leads.bulk_delete") ||
           actor.permissions.includes("*")));
     if (!canDelete) {
       throw new ForbiddenError(
@@ -1843,6 +1904,16 @@ class EducationService extends BaseService {
       description:
         `Deleted student lead "${lead.firstName} ${lead.lastName || ""}" (${lead.mobile})`.trim(),
     });
+  }
+
+  /**
+   * Distribute student leads in fixed batches using round-robin.
+   */
+  async distributeLeadsBatchRoundRobin(data, actor) {
+    this._assertEducation(actor);
+    const { LeadService } = require("../lead/lead.service");
+    const leadService = new LeadService();
+    return leadService.distributeLeadsBatchRoundRobin(data, actor);
   }
 }
 

@@ -96,6 +96,18 @@ class EducationController extends BaseController {
     const student = await this.educationService.enrollLead(request.params.id, request.body || {}, this.getUser(request));
     return this.ok(reply, student, 'Student enrolled successfully');
   }
+
+  async distributeBatchRoundRobin(request, reply) {
+    const result = await this.educationService.distributeLeadsBatchRoundRobin(
+      request.body,
+      this.getUser(request)
+    );
+    return this.ok(
+      reply,
+      result,
+      `Student leads distributed successfully in fixed batches of ${result.batchSize}`
+    );
+  }
 }
 
 module.exports = { EducationController };
