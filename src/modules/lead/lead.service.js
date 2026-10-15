@@ -217,7 +217,8 @@ class LeadService extends BaseService {
     const page = parseInt(query.page, 10) || 1;
     const limit = Math.min(parseInt(query.limit, 10) || 20, 100);
     const skip = (page - 1) * limit;
-    const sortField = query.sort;
+    const hasCustomSort = query.sort && query.sort !== "createdAt" && query.sort !== "default";
+    const sortField = hasCustomSort ? query.sort : null;
     const sortOrder = query.order === "asc" || query.order === 1 ? 1 : -1;
     const sortOptions = sortField
       ? { [sortField]: sortOrder }
@@ -1195,22 +1196,26 @@ class LeadService extends BaseService {
           else if (activityData.type === "site_visit" || activityData.type === "property_visit") followUpType = "site_visit";
           else if (activityData.type === "email") followUpType = "email";
 
+          const followUpNotes = activityData.followUpNotes || activityData.notes || summaryText || "Follow-up scheduled";
+
           await this.leadFollowUpRepository.create({
             organizationId: actor.organizationId,
             branchId: lead.branchId,
             leadId: id,
             scheduledAt: nextFollowUpDate,
             type: followUpType,
-            notes: `Follow-up after ${activityData.type}: ${summaryText}`,
+            notes: followUpNotes,
             assignedTo: activityData.assignedTo || lead.assignedTo || actor.id,
             createdBy: actor.id,
           });
         }
       }
 
-      // Update lead last activity and next follow up
+      // Update lead last activity, last action, and next follow up
       lead.lastActivityType = activityData.type;
       lead.lastActivityAt = activityDate;
+      lead.lastActionAt = activityDate;
+      lead.isAttended = true;
       if (activityData.nextFollowUpAt) {
         lead.nextFollowUpAt = new Date(activityData.nextFollowUpAt);
       } else if (activityData.nextFollowUpAt === null || activityData.clearFollowUp === true) {

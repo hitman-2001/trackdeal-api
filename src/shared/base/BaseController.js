@@ -22,7 +22,7 @@ class BaseController {
    * @param {import('./BaseService')} deps.service - Domain service
    * @param {import('pino').Logger}   deps.logger  - Logger
    */
-  constructor({ service, logger = console }) {
+  constructor({ service, logger = console } = {}) {
     this.service = service;
     this.logger = logger;
 

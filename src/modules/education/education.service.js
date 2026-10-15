@@ -642,13 +642,35 @@ class EducationService extends BaseService {
       "#7c3aed",
     ];
     const sourceLabelMap = {
+      manual_entry: "Manual Entry",
+      "manual-entry": "Manual Entry",
+      manual: "Manual Entry",
       walk_in: "Campus Walk-in",
+      campus: "Campus Walk-in",
       referral: "Direct Referral",
       website: "Website & Digital",
       social_media: "Social Media Ads",
       google_ads: "Google Search Ads",
       education_fair: "Education Fairs",
       direct: "Direct Inquiry",
+      whatsapp: "WhatsApp",
+      phone: "Phone Call",
+      call: "Phone Call",
+      portal: "Web Portal",
+      facebook: "Facebook / Instagram",
+      instagram: "Instagram",
+    };
+
+    const formatSource = (key) => {
+      if (!key) return "Direct Inquiry";
+      const cleanKey = String(key).trim().toLowerCase();
+      if (sourceLabelMap[cleanKey]) return sourceLabelMap[cleanKey];
+      return cleanKey
+        .replace(/[_-]+/g, " ")
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
     };
 
     const totalSources =
@@ -656,8 +678,7 @@ class EducationService extends BaseService {
     const sourceChartData =
       sourcesAgg.length > 0
         ? sourcesAgg.map((s, idx) => {
-            const rawKey = String(s._id).toLowerCase();
-            const label = sourceLabelMap[rawKey] || s._id;
+            const label = formatSource(s._id);
             return {
               label,
               value: s.count,
@@ -1219,10 +1240,39 @@ class EducationService extends BaseService {
       page: query.page,
       limit: query.limit,
       sort: { createdAt: -1 },
-      populate: { path: "classId", select: "name code subject grade" },
+      populate: [
+        { path: "classId", select: "name code subject grade fees" },
+        {
+          path: "leadId",
+          select:
+            "institutionType educationBoard standard academicStream currentCoaching alternativeMobile city address source schoolName parentName parentMobile email",
+        },
+      ],
     });
+
+    const enrichedData = (result.data || []).map((doc) => {
+      const student = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
+      const lead = student.leadId && typeof student.leadId === "object" ? student.leadId : null;
+      if (lead) {
+        if (!student.institutionType && lead.institutionType) student.institutionType = lead.institutionType;
+        if (!student.educationBoard && lead.educationBoard) student.educationBoard = lead.educationBoard;
+        if (!student.standard && lead.standard) student.standard = lead.standard;
+        if (!student.academicStream && lead.academicStream) student.academicStream = lead.academicStream;
+        if (!student.currentCoaching && lead.currentCoaching) student.currentCoaching = lead.currentCoaching;
+        if (!student.alternativeMobile && lead.alternativeMobile) student.alternativeMobile = lead.alternativeMobile;
+        if (!student.schoolName && lead.schoolName) student.schoolName = lead.schoolName;
+        if (!student.city && lead.city) student.city = lead.city;
+        if (!student.address && lead.address) student.address = lead.address;
+        if (!student.source && lead.source) student.source = lead.source;
+        if (!student.parentName && lead.parentName) student.parentName = lead.parentName;
+        if (!student.parentMobile && lead.parentMobile) student.parentMobile = lead.parentMobile;
+        if (!student.email && lead.email) student.email = lead.email;
+      }
+      return student;
+    });
+
     return {
-      data: result.data,
+      data: enrichedData,
       pagination: {
         ...result.pagination,
         pages:
@@ -1251,12 +1301,22 @@ class EducationService extends BaseService {
       email: data.email || "",
       parentName: data.parentName || "",
       parentMobile: data.parentMobile || "",
+      alternativeMobile: data.alternativeMobile || "",
       schoolName:
         data.schoolName || data.collegeName || data.schoolCollege || "",
+      institutionType: data.institutionType || "",
+      educationBoard: data.educationBoard || "",
+      standard: data.standard || "",
+      academicStream: data.academicStream || "",
+      currentCoaching: data.currentCoaching || "",
+      city: data.city || "",
+      address: data.address || "",
+      source: data.source || "",
       classId: data.classId || null,
       leadId: data.leadId || null,
       status: data.status || "active",
       notes: data.notes || "",
+      customFields: data.customFields || {},
       enrollmentDate: data.enrollmentDate || new Date(),
       createdBy: actor.id,
       updatedBy: actor.id,
@@ -1291,10 +1351,21 @@ class EducationService extends BaseService {
       "email",
       "parentName",
       "parentMobile",
+      "alternativeMobile",
       "schoolName",
+      "institutionType",
+      "educationBoard",
+      "standard",
+      "academicStream",
+      "currentCoaching",
+      "city",
+      "address",
+      "source",
       "status",
       "notes",
+      "customFields",
       "classId",
+      "enrollmentDate",
     ].forEach((key) => {
       if (data[key] !== undefined) patch[key] = data[key];
     });
@@ -1458,7 +1529,8 @@ class EducationService extends BaseService {
         { parentName: rx },
       ];
     }
-    const sortField = query.sort;
+    const hasCustomSort = query.sort && query.sort !== "createdAt" && query.sort !== "default";
+    const sortField = hasCustomSort ? query.sort : null;
     const sortOrder = query.order === "asc" || query.order === 1 ? 1 : -1;
     const sortOptions = sortField
       ? { [sortField]: sortOrder }
@@ -1714,11 +1786,21 @@ class EducationService extends BaseService {
               patch.parentMobile !== undefined
                 ? patch.parentMobile
                 : lead.parentMobile || "",
+            alternativeMobile: lead.alternativeMobile || "",
             schoolName: lead.schoolName || "",
+            institutionType: lead.institutionType || "",
+            educationBoard: lead.educationBoard || "",
+            standard: lead.standard || "",
+            academicStream: lead.academicStream || "",
+            currentCoaching: lead.currentCoaching || "",
+            city: lead.city || "",
+            address: lead.address || "",
+            source: lead.source || "",
             classId: classId || null,
             leadId: lead._id,
             status: "active",
             notes: patch.statusRemarks || data.remarks || lead.notes || "",
+            customFields: lead.customFields || {},
             enrollmentDate: new Date(),
             createdBy: lead.assignedTo || lead.createdBy || actor.id,
             updatedBy: actor.id,

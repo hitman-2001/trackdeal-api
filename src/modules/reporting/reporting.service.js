@@ -203,8 +203,32 @@ class ReportingService extends BaseService {
     ]);
     const sourceColors = ['#4f46e5', '#0284c7', '#059669', '#64748b', '#d97706', '#7c3aed'];
     const totalSources = sourcesAgg.reduce((acc, curr) => acc + curr.count, 0) || 1;
+    const formatReportingSource = (key) => {
+      if (!key) return 'Direct Referral';
+      const cleanKey = String(key).trim().toLowerCase();
+      const map = {
+        manual_entry: 'Manual Entry',
+        'manual-entry': 'Manual Entry',
+        manual: 'Manual Entry',
+        walk_in: 'Walk-in Inquiry',
+        referral: 'Direct Referral',
+        website: 'Website / Portal',
+        social_media: 'Social Media',
+        google_ads: 'Google Ads',
+        direct: 'Direct Inquiry',
+        whatsapp: 'WhatsApp',
+        call: 'Phone Call',
+      };
+      if (map[cleanKey]) return map[cleanKey];
+      return cleanKey
+        .replace(/[_-]+/g, ' ')
+        .split(' ')
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    };
     const sourceChartData = sourcesAgg.map((s, idx) => ({
-      label: s._id,
+      label: formatReportingSource(s._id),
       value: s.count,
       percent: Math.round((s.count / totalSources) * 100),
       color: sourceColors[idx % sourceColors.length],

@@ -38,6 +38,7 @@ const agreementRoutes = require('../modules/agreement/agreement.routes');
 const auditRoutes = require('../modules/audit/audit.routes');
 const reportRoutes = require('../modules/reporting/reporting.routes');
 const fileRoutes = require('../modules/file/file.routes');
+const customFieldRoutes = require('../modules/custom-fields/customField.routes');
 const analyticsRoutes = require('../modules/analytics/analytics.routes');
 
 /**
@@ -87,6 +88,7 @@ async function registerRoutes(fastify, opts) {
   fastify.register(commissionRoutes, { prefix: '/commissions' });
   fastify.register(loanRoutes, { prefix: '/loans' });
   fastify.register(agentRoutes, { prefix: '/agents' });
+  fastify.register(customFieldRoutes, { prefix: '/custom-fields' });
 
   // Active module routes
   fastify.register(brokerageRoutes, { prefix: '/brokerage' });
