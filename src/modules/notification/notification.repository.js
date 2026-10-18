@@ -4,7 +4,10 @@ const { Notification } = require('./notification.model');
 const { BaseRepository } = require('../../shared/base/BaseRepository');
 
 class NotificationRepository extends BaseRepository {
-  constructor() { super(Notification); }
+  constructor() {
+    super(Notification);
+    this.isTenantScoped = false;
+  }
 
   async findUnread(userId, pagination = {}) {
     return this.paginate({ recipient: userId, isRead: false }, { sort: { createdAt: -1 }, ...pagination });

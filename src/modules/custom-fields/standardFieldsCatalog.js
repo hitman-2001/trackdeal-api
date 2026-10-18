@@ -43,7 +43,7 @@ const STANDARD_FIELD_CATALOG = {
     field('mobile', 'Primary Mobile', 'text', { required: true, placeholder: '10-digit mobile' }),
     field('alternativeMobile', 'Alternate Phone', 'text', { required: false, placeholder: 'Alternate phone' }),
     field('email', 'Email Address', 'text', { required: false, placeholder: 'student@example.com' }),
-    field('schoolName', 'College / School Name', 'text', { required: true, placeholder: 'e.g. St. Xavier\'s / DPS' }),
+    field('schoolName', 'School / College Name', 'text', { required: true, placeholder: 'e.g. Delhi Public School / St. Xavier\'s College' }),
     field('institutionType', 'Institution Type', 'select', { values: ['School', 'Private Classes'], placeholder: 'Select Institution Type' }),
     field('educationBoard', 'Education Board', 'select', { values: ['CBSE', 'ICSE', 'State Board'], placeholder: 'Select Board' }),
     field('standard', 'Standard / Grade', 'select', { values: ['8', '9', '10', '11', '12'], placeholder: 'Select Standard / Grade' }),

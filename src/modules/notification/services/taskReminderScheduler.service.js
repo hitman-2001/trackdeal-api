@@ -230,17 +230,17 @@ class TaskReminderSchedulerService {
             },
           });
           usersNotified++;
+
+          // Track processed IDs for database flag update on successful dispatch
+          for (const item of items) {
+            if (item.source === 'followup') {
+              processedFollowUpIds.push(item.id);
+            } else if (item.source === 'task') {
+              processedTaskIds.push(item.id);
+            }
+          }
         } catch (dispatchErr) {
           this.logger.error?.({ err: dispatchErr, userId }, 'Failed to dispatch 10-minute task reminder');
-        }
-
-        // Track processed IDs for database flag update
-        for (const item of items) {
-          if (item.source === 'followup') {
-            processedFollowUpIds.push(item.id);
-          } else if (item.source === 'task') {
-            processedTaskIds.push(item.id);
-          }
         }
       }
 

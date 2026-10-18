@@ -67,6 +67,14 @@ const customFieldSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    isStandard: {
+      type: Boolean,
+      default: false,
+    },
+    isSystemLocked: {
+      type: Boolean,
+      default: false,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

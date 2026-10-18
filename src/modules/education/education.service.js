@@ -1699,6 +1699,7 @@ class EducationService extends BaseService {
       createdBy: actor.id,
       updatedBy: actor.id,
       requirements: { notes: data.notes || "" },
+      customFields: data.customFields || {},
     });
 
     await this.logAudit({
@@ -1795,6 +1796,7 @@ class EducationService extends BaseService {
       "assignedTo",
       "classInterestId",
       "leadTemperature",
+      "customFields",
     ].forEach((key) => {
       if (data[key] !== undefined) patch[key] = data[key];
     });

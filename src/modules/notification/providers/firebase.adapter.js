@@ -246,6 +246,8 @@ class FirebaseAdapter {
             android: {
               priority: 'HIGH',
               notification: {
+                icon: 'ic_stat_notification',
+                color: '#7c3aed',
                 channel_id:
                   sanitizedData.entityType?.includes('reminder') ||
                   sanitizedData.entityType === 'lead_followup' ||
