@@ -510,6 +510,8 @@ const leadFollowUpSchema = new mongoose.Schema(
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     escalatedAt: Date,
     escalationReason: String,
+    reminder10MinSent: { type: Boolean, default: false, index: true },
+    reminder10MinSentAt: Date,
   },
   { timestamps: true }
 );
@@ -517,6 +519,7 @@ const leadFollowUpSchema = new mongoose.Schema(
 leadFollowUpSchema.index({ organizationId: 1, leadId: 1, scheduledAt: 1 });
 leadFollowUpSchema.index({ organizationId: 1, assignedTo: 1, scheduledAt: 1, status: 1 });
 leadFollowUpSchema.index({ organizationId: 1, status: 1, scheduledAt: 1 });
+leadFollowUpSchema.index({ status: 1, reminder10MinSent: 1, scheduledAt: 1 });
 
 const LeadFollowUp = mongoose.model("LeadFollowUp", leadFollowUpSchema, "lead_followups");
 

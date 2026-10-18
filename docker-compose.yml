@@ -20,10 +20,13 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     env_file:
       - .env
     environment:
       - REDIS_HOST=redis
+      - FCM_PROJECT_ID=${FCM_PROJECT_ID:-trackdeal-d0227}
+      - FCM_SERVICE_ACCOUNT_PATH=${FCM_SERVICE_ACCOUNT_PATH:-firebase-service-account.json}
     depends_on:
       - redis
 

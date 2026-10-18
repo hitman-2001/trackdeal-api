@@ -88,6 +88,13 @@ const userSchema = new mongoose.Schema(
 
     // Device tracking
     devices: [deviceSchema],
+    deviceTokens: [
+      {
+        token: { type: String, required: true },
+        platform: { type: String, enum: ['android', 'ios', 'web'], default: 'android' },
+        updatedAt: { type: Date, default: Date.now },
+      },
+    ],
 
     // Password reset
     passwordResetToken: { type: String, select: false },

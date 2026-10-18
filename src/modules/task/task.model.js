@@ -90,12 +90,15 @@ const taskSchema = new mongoose.Schema(
       default: null,
     },
     escalationReason: String,
+    reminder10MinSent: { type: Boolean, default: false, index: true },
+    reminder10MinSentAt: Date,
   },
   { timestamps: true }
 );
 
 taskSchema.index({ organizationId: 1, assignedTo: 1, status: 1, dueDate: 1 });
 taskSchema.index({ organizationId: 1, status: 1, dueDate: 1 });
+taskSchema.index({ status: 1, reminder10MinSent: 1, dueDate: 1 });
 
 const Task = mongoose.model("Task", taskSchema);
 
