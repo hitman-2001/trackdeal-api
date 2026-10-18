@@ -1515,6 +1515,43 @@ class LeadService extends BaseService {
       }
 
       // If rescheduling or updating details
+      if (data.scheduledAt) {
+        const targetDate = new Date(data.scheduledAt);
+        const targetTime = targetDate.getTime();
+        const conflictQuery = {
+          leadId,
+          organizationId: actor.organizationId,
+          status: "scheduled",
+          isDeleted: { $ne: true },
+          scheduledAt: {
+            $gte: new Date(targetTime - 14 * 60 * 1000),
+            $lte: new Date(targetTime + 14 * 60 * 1000),
+          },
+        };
+        if (followUpId && !String(followUpId).startsWith("fu-")) {
+          conflictQuery._id = { $ne: followUpId };
+        }
+
+        const conflictingTask = await LeadFollowUp.findOne(conflictQuery);
+        if (conflictingTask) {
+          const conflictDate = new Date(conflictingTask.scheduledAt);
+          const timeStr = conflictDate.toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          });
+          const isSameDay = conflictDate.toDateString() === targetDate.toDateString();
+          const dateStr = isSameDay ? "today" : conflictDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const leadDoc = await Lead.findById(leadId).lean();
+          const studentName = leadDoc?.firstName ? `${leadDoc.firstName} ${leadDoc.lastName || ""}`.trim() : "this student";
+
+          throw new BusinessRuleError(
+            `A task is already scheduled for ${studentName} ${dateStr} at ${timeStr}. Please choose a different time slot.`,
+            "TASK_SCHEDULE_CONFLICT"
+          );
+        }
+      }
+
       if (followUp) {
         if (data.status !== undefined) followUp.status = data.status;
         if (data.scheduledAt !== undefined) followUp.scheduledAt = new Date(data.scheduledAt);
@@ -1609,6 +1646,39 @@ class LeadService extends BaseService {
       throw new BusinessRuleError(
         "Follow-up date cannot be in the past",
         "FOLLOW_UP_PAST_DATE"
+      );
+    }
+
+    const targetDate = new Date(followUpData.scheduledAt);
+    const targetTime = targetDate.getTime();
+    const { LeadFollowUp } = require("./lead.model");
+
+    // Check if an active scheduled task already exists for this student at the same time slot
+    const conflictingTask = await LeadFollowUp.findOne({
+      leadId: id,
+      organizationId: actor.organizationId,
+      status: "scheduled",
+      isDeleted: { $ne: true },
+      scheduledAt: {
+        $gte: new Date(targetTime - 14 * 60 * 1000),
+        $lte: new Date(targetTime + 14 * 60 * 1000),
+      },
+    });
+
+    if (conflictingTask) {
+      const conflictDate = new Date(conflictingTask.scheduledAt);
+      const timeStr = conflictDate.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      const isSameDay = conflictDate.toDateString() === targetDate.toDateString();
+      const dateStr = isSameDay ? "today" : conflictDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const studentName = lead.firstName ? `${lead.firstName} ${lead.lastName || ""}`.trim() : "this student";
+
+      throw new BusinessRuleError(
+        `A task is already scheduled for ${studentName} ${dateStr} at ${timeStr}. Please choose a different time slot.`,
+        "TASK_SCHEDULE_CONFLICT"
       );
     }
 

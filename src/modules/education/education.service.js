@@ -200,8 +200,81 @@ class EducationService extends BaseService {
       },
     );
 
-    const seenLeadIds = new Set();
-    const followUps = [];
+    const leadMap = new Map();
+
+    function addOrMergeFollowUp(item) {
+      const lId = item.leadId;
+      if (!leadMap.has(lId)) {
+        leadMap.set(lId, {
+          ...item,
+          totalPendingTasks: 1,
+          upcomingTasks: [],
+        });
+        return;
+      }
+
+      const existing = leadMap.get(lId);
+      const curTime = new Date(existing.scheduledAt).getTime();
+      const newTime = new Date(item.scheduledAt).getTime();
+
+      // Check if duplicate reminder within 15 minutes of primary task
+      const isDuplicatePrimary = Math.abs(curTime - newTime) < 15 * 60 * 1000;
+      if (isDuplicatePrimary) {
+        if (item.notes && (!existing.notes || item.notes.length > existing.notes.length)) {
+          existing.notes = item.notes;
+        }
+        return;
+      }
+
+      // Check if duplicate reminder within 15 minutes of an already queued upcoming task
+      const isDuplicateUpcoming = existing.upcomingTasks.find(
+        (t) => Math.abs(new Date(t.scheduledAt).getTime() - newTime) < 15 * 60 * 1000
+      );
+      if (isDuplicateUpcoming) {
+        if (item.notes && (!isDuplicateUpcoming.notes || item.notes.length > isDuplicateUpcoming.notes.length)) {
+          isDuplicateUpcoming.notes = item.notes;
+        }
+        return;
+      }
+
+      existing.totalPendingTasks += 1;
+
+      if (newTime < curTime) {
+        // The newly encountered task is earlier, so it becomes the primary active task
+        const prevActive = {
+          _id: existing._id,
+          scheduledAt: existing.scheduledAt,
+          type: existing.type,
+          notes: existing.notes,
+          status: existing.status,
+          isOverdue: existing.isOverdue,
+          isToday: existing.isToday,
+          isUpcoming: existing.isUpcoming,
+        };
+        existing._id = item._id;
+        existing.scheduledAt = item.scheduledAt;
+        existing.type = item.type;
+        existing.notes = item.notes;
+        existing.status = item.status;
+        existing.isOverdue = item.isOverdue;
+        existing.isToday = item.isToday;
+        existing.isUpcoming = item.isUpcoming;
+        existing.upcomingTasks.push(prevActive);
+      } else {
+        existing.upcomingTasks.push({
+          _id: item._id,
+          scheduledAt: item.scheduledAt,
+          type: item.type,
+          notes: item.notes,
+          status: item.status,
+          isOverdue: item.isOverdue,
+          isToday: item.isToday,
+          isUpcoming: item.isUpcoming,
+        });
+      }
+
+      existing.upcomingTasks.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+    }
 
     for (const f of rawFollowUps) {
       if (f.leadId) {
@@ -225,7 +298,6 @@ class EducationService extends BaseService {
           }
         }
         const lId = String(f.leadId._id || f.leadId);
-        seenLeadIds.add(lId);
         const sched = new Date(f.scheduledAt);
         if (isNaN(sched.getTime())) continue;
 
@@ -251,7 +323,7 @@ class EducationService extends BaseService {
           ? (`${counselor.firstName || ""}`.trim() ? `${counselor.firstName || ""} ${counselor.lastName || ""}`.trim() : counselor.email || "Counselor")
           : "Unassigned";
 
-        followUps.push({
+        addOrMergeFollowUp({
           _id: String(f._id),
           leadId: lId,
           lead: f.leadId,
@@ -275,63 +347,62 @@ class EducationService extends BaseService {
 
     for (const l of leadsWithFollowUp) {
       const lId = String(l._id);
-      if (!seenLeadIds.has(lId)) {
-        if (!isAdmin && actorId) {
-          const actorIdStr = String(actorId);
-          const assignedId = String(l.assignedTo?._id || l.assignedTo || "");
-          if (assignedId && assignedId !== actorIdStr) {
-            continue;
-          }
+      if (!isAdmin && actorId) {
+        const actorIdStr = String(actorId);
+        const assignedId = String(l.assignedTo?._id || l.assignedTo || "");
+        if (assignedId && assignedId !== actorIdStr) {
+          continue;
         }
-        const sched = new Date(l.nextFollowUpAt);
-        if (isNaN(sched.getTime())) continue;
-
-        const isOverdue = sched < now;
-        const isToday = sched >= startOfToday && sched <= endOfToday;
-        const isUpcoming = sched > endOfToday;
-
-        const studentName =
-          `${l.firstName || ""}`.trim()
-            ? `${l.firstName || ""} ${l.lastName || ""}`.trim()
-            : l.name ||
-              l.parentName ||
-              l.mobile ||
-              "Student Lead";
-
-        const counselor =
-          (l.assignedTo && typeof l.assignedTo === "object" && (l.assignedTo.firstName || l.assignedTo.email))
-            ? l.assignedTo
-            : null;
-
-        const assignedStaffName = counselor
-          ? (`${counselor.firstName || ""}`.trim() ? `${counselor.firstName || ""} ${counselor.lastName || ""}`.trim() : counselor.email || "Counselor")
-          : "Unassigned";
-
-        followUps.push({
-          _id: `fu-${lId}`,
-          leadId: lId,
-          lead: l,
-          studentName,
-          parentName: l.parentName || "",
-          contactNumber: l.parentMobile || l.mobile || "",
-          studentMobile: l.mobile || "",
-          className: l.classInterestId?.name || "",
-          scheduledAt: l.nextFollowUpAt,
-          type: l.lastActivityType || "call",
-          notes:
-            l.qualification?.notesRemarks ||
-            l.notesRemarks ||
-            "Scheduled follow-up",
-          status: "scheduled",
-          assignedTo: l.assignedTo,
-          assignedStaffName,
-          isOverdue,
-          isToday,
-          isUpcoming,
-        });
       }
+      const sched = new Date(l.nextFollowUpAt);
+      if (isNaN(sched.getTime())) continue;
+
+      const isOverdue = sched < now;
+      const isToday = sched >= startOfToday && sched <= endOfToday;
+      const isUpcoming = sched > endOfToday;
+
+      const studentName =
+        `${l.firstName || ""}`.trim()
+          ? `${l.firstName || ""} ${l.lastName || ""}`.trim()
+          : l.name ||
+            l.parentName ||
+            l.mobile ||
+            "Student Lead";
+
+      const counselor =
+        (l.assignedTo && typeof l.assignedTo === "object" && (l.assignedTo.firstName || l.assignedTo.email))
+          ? l.assignedTo
+          : null;
+
+      const assignedStaffName = counselor
+        ? (`${counselor.firstName || ""}`.trim() ? `${counselor.firstName || ""} ${counselor.lastName || ""}`.trim() : counselor.email || "Counselor")
+        : "Unassigned";
+
+      addOrMergeFollowUp({
+        _id: `fu-${lId}`,
+        leadId: lId,
+        lead: l,
+        studentName,
+        parentName: l.parentName || "",
+        contactNumber: l.parentMobile || l.mobile || "",
+        studentMobile: l.mobile || "",
+        className: l.classInterestId?.name || "",
+        scheduledAt: l.nextFollowUpAt,
+        type: l.lastActivityType || "call",
+        notes:
+          l.qualification?.notesRemarks ||
+          l.notesRemarks ||
+          "Scheduled follow-up",
+        status: "scheduled",
+        assignedTo: l.assignedTo,
+        assignedStaffName,
+        isOverdue,
+        isToday,
+        isUpcoming,
+      });
     }
 
+    const followUps = Array.from(leadMap.values());
     followUps.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
 
     const overdueFollowUps = followUps.filter((f) => f.isOverdue).length;
@@ -1736,8 +1807,8 @@ class EducationService extends BaseService {
       patch.nextFollowUpAt = data.nextFollowUpAt
         ? new Date(data.nextFollowUpAt)
         : null;
+      const { LeadFollowUp } = require("../lead/lead.model");
       if (!patch.nextFollowUpAt) {
-        const { LeadFollowUp } = require("../lead/lead.model");
         await LeadFollowUp.updateMany(
           { leadId: id, status: "scheduled", isDeleted: { $ne: true } },
           {
@@ -1748,6 +1819,62 @@ class EducationService extends BaseService {
             },
           },
         );
+      } else {
+        const targetTime = patch.nextFollowUpAt.getTime();
+        if (data.keepExistingFollowUp) {
+          const conflictingTask = await LeadFollowUp.findOne({
+            leadId: id,
+            status: "scheduled",
+            isDeleted: { $ne: true },
+            scheduledAt: {
+              $gte: new Date(targetTime - 14 * 60 * 1000),
+              $lte: new Date(targetTime + 14 * 60 * 1000),
+            },
+          });
+          if (conflictingTask) {
+            const conflictDate = new Date(conflictingTask.scheduledAt);
+            const timeStr = conflictDate.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            });
+            const isSameDay = conflictDate.toDateString() === patch.nextFollowUpAt.toDateString();
+            const dateStr = isSameDay ? "today" : conflictDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            const studentName = lead.firstName ? `${lead.firstName} ${lead.lastName || ""}`.trim() : "this student";
+
+            throw new BusinessRuleError(
+              `A task is already scheduled for ${studentName} ${dateStr} at ${timeStr}. Please choose a different time slot.`,
+              "TASK_SCHEDULE_CONFLICT"
+            );
+          }
+        } else {
+          await LeadFollowUp.updateMany(
+            { leadId: id, status: "scheduled", isDeleted: { $ne: true } },
+            {
+              $set: {
+                status: "completed",
+                completedAt: new Date(),
+                completedBy: actor?.id || null,
+              },
+            },
+          );
+        }
+
+        const assignedUser = lead.assignedTo?._id || lead.assignedTo || actor?.id;
+        const orgId = lead.organizationId || actor?.organizationId;
+        if (assignedUser && orgId) {
+          await LeadFollowUp.create({
+            organizationId: orgId,
+            branchId: lead.branchId || null,
+            leadId: id,
+            scheduledAt: patch.nextFollowUpAt,
+            type: "call",
+            notes: data.statusRemarks || data.remarks || "Follow-up scheduled",
+            status: "scheduled",
+            assignedTo: assignedUser,
+            createdBy: actor?.id || assignedUser,
+          });
+        }
       }
     }
     if (data.notes !== undefined) {
