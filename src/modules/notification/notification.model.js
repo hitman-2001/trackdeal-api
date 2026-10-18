@@ -16,14 +16,14 @@ const notificationSchema = new mongoose.Schema(
     message: { type: String, required: true },
     type: {
       type: String,
-      enum: ['info', 'success', 'warning', 'error', 'lead', 'deal', 'invoice', 'visit', 'system'],
+      enum: ['info', 'success', 'warning', 'error', 'lead', 'deal', 'invoice', 'visit', 'system', 'reminder'],
       default: 'info',
     },
 
     // Channel
     channel: {
       type: String,
-      enum: ['in_app', 'email', 'whatsapp', 'sms'],
+      enum: ['in_app', 'email', 'whatsapp', 'sms', 'push'],
       default: 'in_app',
     },
 
