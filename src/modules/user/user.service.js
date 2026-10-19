@@ -86,10 +86,27 @@ class UserService extends BaseService {
 
     const emailLower = data.email.toLowerCase().trim();
 
-    // 2. Check for duplicate email
+    // 2. Check for duplicate email (ignoring soft-deleted users)
     const exists = await this.userRepository.findByEmail(emailLower);
     if (exists) {
       throw new ConflictError(`User with email '${emailLower}' already exists`);
+    }
+
+    // Release any soft-deleted user records currently holding this email address in MongoDB
+    try {
+      const softDeletedUsers = await this.userRepository.model.find({
+        email: emailLower,
+        isDeleted: true,
+      });
+      for (const dUser of softDeletedUsers) {
+        dUser.email = `${dUser.email}__deleted__${dUser._id}`;
+        await dUser.save().catch(async () => {
+          dUser.email = `${emailLower}__deleted__${Date.now()}_${dUser._id}`;
+          await dUser.save();
+        });
+      }
+    } catch (err) {
+      console.warn('[UserService] Error freeing soft-deleted user email:', err.message);
     }
 
     // Hash password
@@ -370,8 +387,31 @@ class UserService extends BaseService {
       }
     }
 
-    // 2. Soft-delete the user
-    await this.userRepository.softDelete(id, actor.id);
+    // 2. Soft-delete the user and release their email address so it can be immediately re-used
+    const deletedEmail = `${user.email}__deleted__${user._id || id}`;
+    await this.userRepository.model.updateOne(
+      { _id: id },
+      {
+        $set: {
+          isDeleted: true,
+          status: 'inactive',
+          email: deletedEmail,
+          deletedAt: new Date(),
+          deletedBy: actor.id,
+        },
+      }
+    );
+
+    // Cancel any pending invitations for this user's email
+    try {
+      const { UserInvitation } = require('./user-invitation.model');
+      if (UserInvitation) {
+        await UserInvitation.updateMany(
+          { email: user.email.toLowerCase(), status: 'pending' },
+          { $set: { status: 'cancelled' } }
+        );
+      }
+    } catch (_) {}
 
     await this.logAudit({
       action: AUDIT_ACTIONS.DELETE,
@@ -737,16 +777,34 @@ class UserService extends BaseService {
     // 1. Quota check: Enforce limits
     await this._verifyUserQuota(actor.organizationId);
 
-    // 2. Check user duplicates
+    // 2. Check user duplicates (ignoring soft-deleted users)
     const userExists = await this.userRepository.findByEmail(emailLower);
     if (userExists) {
       throw new ConflictError('A user with this email already exists on the platform.');
     }
 
+    // Release any soft-deleted user records currently holding this email address in MongoDB
+    try {
+      const softDeletedUsers = await this.userRepository.model.find({
+        email: emailLower,
+        isDeleted: true,
+      });
+      for (const dUser of softDeletedUsers) {
+        dUser.email = `${dUser.email}__deleted__${dUser._id}`;
+        await dUser.save().catch(async () => {
+          dUser.email = `${emailLower}__deleted__${Date.now()}_${dUser._id}`;
+          await dUser.save();
+        });
+      }
+    } catch (err) {
+      console.warn('[UserService] Error freeing soft-deleted user email during invite:', err.message);
+    }
+
     // 3. Check duplicate active invitation
     const inviteExists = await this.userInvitationRepository.findPendingByEmail(emailLower);
     if (inviteExists) {
-      throw new ConflictError('A pending invitation has already been sent to this email address.');
+      // If there's an existing pending invitation, cancel the old one so a fresh invitation token is generated
+      await this.userInvitationRepository.update(inviteExists.id, { status: 'cancelled' });
     }
 
     // 4. Validate role

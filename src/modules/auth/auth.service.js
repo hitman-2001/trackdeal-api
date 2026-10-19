@@ -643,6 +643,17 @@ class AuthService extends BaseService {
       throw new ConflictError('A user with this email already exists on the platform.');
     }
 
+    // Release any soft-deleted user records holding this email
+    await tenantContext.run({ isSystemOverride: true }, async () => {
+      try {
+        const softDeleted = await User.find({ email: invite.email, isDeleted: true });
+        for (const dUser of softDeleted) {
+          dUser.email = `${dUser.email}__deleted__${dUser._id}`;
+          await dUser.save().catch(() => {});
+        }
+      } catch (_) {}
+    });
+
     // Verify organization quota before creating user
     const { Organization } = require('../organization/organization.model');
     const org = await tenantContext.run({ isSystemOverride: true }, () =>

@@ -522,6 +522,15 @@ class AdminService extends BaseService {
         throw new ConflictError(`A user with email '${cleanEmail}' already exists.`);
       }
 
+      // Release any soft-deleted user records holding this email
+      try {
+        const softDeleted = await User.find({ email: cleanEmail, isDeleted: true });
+        for (const dUser of softDeleted) {
+          dUser.email = `${dUser.email}__deleted__${dUser._id}`;
+          await dUser.save().catch(() => {});
+        }
+      } catch (_) {}
+
       const org = await Organization.findById(organizationId);
       if (!org || org.isDeleted) throw new NotFoundError('Organization', organizationId);
 
