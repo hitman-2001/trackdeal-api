@@ -35,15 +35,16 @@ class TaskReminderSchedulerService {
   }
 
   /**
-   * Helper to format time into HH:MM AM/PM
+   * Helper to format time into HH:MM AM/PM in user/organization timezone
    */
-  _formatTime(date) {
+  _formatTime(date, timeZone = 'Asia/Kolkata') {
     try {
       const d = new Date(date);
       return d.toLocaleTimeString('en-US', {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
+        timeZone: timeZone || 'Asia/Kolkata',
       });
     } catch {
       return '';
@@ -87,7 +88,7 @@ class TaskReminderSchedulerService {
         isDeleted: { $ne: true },
       })
         .populate('leadId', 'firstName lastName name mobile email tenantVertical')
-        .populate('assignedTo', '_id firstName lastName name email')
+        .populate('assignedTo', '_id firstName lastName name email timezone')
         .lean();
 
       // 2. Fetch unreminded Tasks (used across Real Estate CRM and Education)
@@ -97,7 +98,7 @@ class TaskReminderSchedulerService {
         reminder10MinSent: { $ne: true },
       })
         .populate('leadId', 'firstName lastName name mobile email tenantVertical')
-        .populate('assignedTo', '_id firstName lastName name email')
+        .populate('assignedTo', '_id firstName lastName name email timezone')
         .lean();
 
       if (pendingFollowUps.length === 0 && pendingTasks.length === 0) {
@@ -118,14 +119,26 @@ class TaskReminderSchedulerService {
           });
         }
 
+        const leadIdStr = fu.leadId?._id ? String(fu.leadId._id) : (fu.leadId ? String(fu.leadId) : '');
+        const schedTime = fu.scheduledAt ? new Date(fu.scheduledAt).getTime() : 0;
+        const dedupKey = `fu_${leadIdStr}_${schedTime}`;
+
+        const existing = userTasksMap.get(userId).items.find((i) => i.dedupKey === dedupKey);
+        if (existing) {
+          existing.allIds.push(fu._id);
+          continue;
+        }
+
         const leadName = this._getLeadName(fu.leadId);
         userTasksMap.get(userId).items.push({
           id: fu._id,
+          allIds: [fu._id],
+          dedupKey,
           source: 'followup',
           rawType: fu.type,
           typeLabel: this._formatType(fu.type),
           leadName,
-          leadId: fu.leadId?._id ? String(fu.leadId._id) : null,
+          leadId: leadIdStr || null,
           mobile: fu.leadId?.mobile || '',
           tenantVertical: fu.leadId?.tenantVertical || 'realEstate',
           scheduledAt: fu.scheduledAt,
@@ -144,14 +157,26 @@ class TaskReminderSchedulerService {
           });
         }
 
+        const leadIdStr = t.leadId?._id ? String(t.leadId._id) : (t.leadId ? String(t.leadId) : '');
+        const schedTime = t.dueDate ? new Date(t.dueDate).getTime() : 0;
+        const dedupKey = `task_${leadIdStr}_${schedTime}_${t.title || ''}`;
+
+        const existing = userTasksMap.get(userId).items.find((i) => i.dedupKey === dedupKey);
+        if (existing) {
+          existing.allIds.push(t._id);
+          continue;
+        }
+
         const leadName = t.leadId ? this._getLeadName(t.leadId) : (t.title || 'Task');
         userTasksMap.get(userId).items.push({
           id: t._id,
+          allIds: [t._id],
+          dedupKey,
           source: 'task',
           rawType: t.type || 'general',
           typeLabel: this._formatType(t.type),
           leadName,
-          leadId: t.leadId?._id ? String(t.leadId._id) : null,
+          leadId: leadIdStr || null,
           mobile: t.leadId?.mobile || '',
           tenantVertical: t.leadId?.tenantVertical || 'realEstate',
           scheduledAt: t.dueDate,
@@ -165,8 +190,10 @@ class TaskReminderSchedulerService {
 
       // 4. Send aggregated or single notification per user
       for (const [userId, group] of userTasksMap.entries()) {
-        const { items } = group;
+        const { items, user } = group;
         if (items.length === 0) continue;
+
+        const userTimezone = user?.timezone || 'Asia/Kolkata';
 
         let title = '';
         let message = '';
@@ -176,7 +203,7 @@ class TaskReminderSchedulerService {
         if (items.length === 1) {
           // Single task notification
           const item = items[0];
-          const timeStr = this._formatTime(item.scheduledAt);
+          const timeStr = this._formatTime(item.scheduledAt, userTimezone);
           title = `Reminder: ${item.typeLabel} in 10 minutes (${item.leadName})`;
 
           let details = `${item.typeLabel} with ${item.leadName} scheduled for ${timeStr}`;
@@ -195,7 +222,7 @@ class TaskReminderSchedulerService {
           title = `Upcoming Agenda: ${items.length} tasks scheduled in 10 minutes`;
 
           const summaryLines = items.slice(0, 4).map((item, idx) => {
-            const timeStr = this._formatTime(item.scheduledAt);
+            const timeStr = this._formatTime(item.scheduledAt, userTimezone);
             return `${idx + 1}. ${item.leadName} (${item.typeLabel}${timeStr ? ` at ${timeStr}` : ''})`;
           });
 
@@ -233,10 +260,11 @@ class TaskReminderSchedulerService {
 
           // Track processed IDs for database flag update on successful dispatch
           for (const item of items) {
+            const ids = item.allIds && item.allIds.length > 0 ? item.allIds : [item.id];
             if (item.source === 'followup') {
-              processedFollowUpIds.push(item.id);
+              processedFollowUpIds.push(...ids);
             } else if (item.source === 'task') {
-              processedTaskIds.push(item.id);
+              processedTaskIds.push(...ids);
             }
           }
         } catch (dispatchErr) {

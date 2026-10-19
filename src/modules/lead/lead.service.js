@@ -1186,28 +1186,40 @@ class LeadService extends BaseService {
         metadata: activityData.metadata || {},
       });
 
-      // Auto-schedule follow-up if nextFollowUpAt is provided
+      // Auto-schedule follow-up if nextFollowUpAt is provided (avoiding duplicate if already scheduled)
       if (activityData.nextFollowUpAt) {
         const nextFollowUpDate = new Date(activityData.nextFollowUpAt);
         if (nextFollowUpDate > new Date()) {
-          let followUpType = "call";
-          if (activityData.type === "whatsapp") followUpType = "whatsapp";
-          else if (activityData.type === "meeting") followUpType = "meeting";
-          else if (activityData.type === "site_visit" || activityData.type === "property_visit") followUpType = "site_visit";
-          else if (activityData.type === "email") followUpType = "email";
-
-          const followUpNotes = activityData.followUpNotes || activityData.notes || summaryText || "Follow-up scheduled";
-
-          await this.leadFollowUpRepository.create({
-            organizationId: actor.organizationId,
-            branchId: lead.branchId,
+          const existingFollowUp = await this.leadFollowUpRepository.findOne({
             leadId: id,
-            scheduledAt: nextFollowUpDate,
-            type: followUpType,
-            notes: followUpNotes,
-            assignedTo: activityData.assignedTo || lead.assignedTo || actor.id,
-            createdBy: actor.id,
+            status: "scheduled",
+            isDeleted: { $ne: true },
+            scheduledAt: {
+              $gte: new Date(nextFollowUpDate.getTime() - 60 * 1000),
+              $lte: new Date(nextFollowUpDate.getTime() + 60 * 1000),
+            },
           });
+
+          if (!existingFollowUp) {
+            let followUpType = "call";
+            if (activityData.type === "whatsapp") followUpType = "whatsapp";
+            else if (activityData.type === "meeting") followUpType = "meeting";
+            else if (activityData.type === "site_visit" || activityData.type === "property_visit") followUpType = "site_visit";
+            else if (activityData.type === "email") followUpType = "email";
+
+            const followUpNotes = activityData.followUpNotes || activityData.notes || summaryText || "Follow-up scheduled";
+
+            await this.leadFollowUpRepository.create({
+              organizationId: actor.organizationId,
+              branchId: lead.branchId,
+              leadId: id,
+              scheduledAt: nextFollowUpDate,
+              type: followUpType,
+              notes: followUpNotes,
+              assignedTo: activityData.assignedTo || lead.assignedTo || actor.id,
+              createdBy: actor.id,
+            });
+          }
         }
       }
 
