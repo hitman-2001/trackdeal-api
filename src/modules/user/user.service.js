@@ -151,6 +151,49 @@ class UserService extends BaseService {
       description: `User '${user.email}' created directly (staff onboarded)`,
     });
 
+    // Dispatch welcome credentials email asynchronously via Brevo SMTP
+    if (data.password) {
+      try {
+        const { emailService } = require('../email/email.service');
+        const staffName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Staff Member';
+        let roleName = 'Staff Member';
+        let orgName = actor?.organizationName;
+
+        const dispatchWelcome = async () => {
+          if (!orgName && actor?.organizationId) {
+            try {
+              const { Organization } = require('../organization/organization.model');
+              const org = await Organization.findById(actor.organizationId).select('name').lean();
+              if (org?.name) orgName = org.name;
+            } catch (_) {}
+          }
+
+          if (data.roleId) {
+            try {
+              const { Role } = require('../authorization/role.model');
+              const assignedRole = await Role.findById(data.roleId).select('name').lean();
+              if (assignedRole?.name) roleName = assignedRole.name;
+            } catch (_) {}
+          }
+
+          return emailService.sendStaffWelcomeCredentialsEmail({
+            to: user.email,
+            staffName,
+            username: user.email,
+            password: data.password,
+            roleName,
+            organizationName: orgName || 'TrackDeal CRM',
+          });
+        };
+
+        dispatchWelcome().catch((err) => {
+          console.error('[UserService] Failed to dispatch staff welcome email:', err.message);
+        });
+      } catch (err) {
+        console.error('[UserService] Error initiating welcome email dispatch:', err.message);
+      }
+    }
+
     return user;
   }
 

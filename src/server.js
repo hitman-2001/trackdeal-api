@@ -36,10 +36,12 @@ async function start() {
     // 5. Start BullMQ workers (after models are loaded)
     await startWorkers(fastify.log);
 
-    // 6. Register enterprise task reminder scheduler shutdown hook
+    // 6. Register enterprise task reminder & daily digest scheduler shutdown hooks
     const { taskReminderScheduler } = require('./modules/notification/services/taskReminderScheduler.service');
+    const { dailyDigestScheduler } = require('./modules/email/dailyDigestScheduler.service');
     fastify.addHook('onClose', async () => {
       taskReminderScheduler.stopScheduler();
+      dailyDigestScheduler.stopScheduler();
     });
 
     // 7. Start HTTP listener
@@ -47,6 +49,9 @@ async function start() {
 
     // 8. Start enterprise task reminder scheduler (runs every 60s)
     taskReminderScheduler.startScheduler(60000);
+
+    // 9. Start daily 11:00 AM IST executive staff operations digest scheduler
+    dailyDigestScheduler.startScheduler();
 
     fastify.log.info(`
 ╔═══════════════════════════════════════════════╗

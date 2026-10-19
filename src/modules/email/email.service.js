@@ -14,12 +14,12 @@
 
 class EmailService {
   constructor(options = {}) {
-    this.host = options.host || process.env.SMTP_HOST || 'smtp.mailgun.org';
+    this.host = options.host || process.env.SMTP_HOST || 'smtp-relay.brevo.com';
     this.port = parseInt(options.port || process.env.SMTP_PORT || '587', 10);
     this.secure = options.secure ?? (this.port === 465);
     this.user = options.user || process.env.SMTP_USER || '';
     this.pass = options.pass || process.env.SMTP_PASS || '';
-    this.from = options.from || process.env.SMTP_FROM || 'TrackDeal CRM <noreply@trackdeal.com>';
+    this.from = options.from || process.env.SMTP_FROM || process.env.EMAIL_FROM || 'TrackDeal CRM <contact@trackdeal.in>';
     this.appUrl = options.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:5173';
   }
 
@@ -117,25 +117,26 @@ class EmailService {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject}</title>
   <style>
-    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }
+    body { margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; }
     table { border-collapse: collapse; }
-    .wrapper { width: 100%; table-layout: fixed; background-color: #f8fafc; padding: 40px 0; }
-    .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
-    .header { background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding: 32px 36px; text-align: left; }
-    .header h1 { margin: 0; font-size: 22px; color: #ffffff; font-weight: 700; letter-spacing: -0.02em; }
-    .header p { margin: 6px 0 0 0; font-size: 13px; color: #bfdbfe; }
-    .content { padding: 36px; }
-    .greeting { font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 12px; }
-    .message { font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px; }
-    .credentials-box { background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; }
-    .cred-row { margin-bottom: 12px; font-size: 13px; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #f1f5f9; padding: 36px 0; }
+    .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.04); }
+    .header { background: linear-gradient(135deg, #1b3d2f 0%, #264f3c 100%); padding: 32px 36px; text-align: left; }
+    .header-badge { display: inline-block; background-color: rgba(255,255,255,0.18); color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 9999px; margin-bottom: 8px; }
+    .header h1 { margin: 0; font-size: 22px; color: #ffffff; font-weight: 800; letter-spacing: -0.02em; }
+    .header p { margin: 6px 0 0 0; font-size: 13px; color: #d1fae5; }
+    .content { padding: 32px 36px; }
+    .greeting { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+    .message { font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 24px; }
+    .credentials-card { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px 22px; margin-bottom: 24px; }
+    .cred-row { margin-bottom: 14px; }
     .cred-row:last-child { margin-bottom: 0; }
-    .cred-label { font-weight: 600; color: #64748b; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; display: block; margin-bottom: 4px; }
-    .cred-value { font-size: 15px; font-weight: 700; color: #0f172a; font-family: 'Courier New', Courier, monospace; background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #e2e8f0; display: inline-block; word-break: break-all; }
-    .cta-container { text-align: center; margin: 32px 0 24px 0; }
-    .cta-button { display: inline-block; background-color: #2563eb; color: #ffffff !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 14px 32px; border-radius: 10px; box-shadow: 0 2px 6px rgba(37,99,235,0.25); }
-    .security-note { background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 6px; font-size: 12px; color: #92400e; line-height: 1.5; margin-bottom: 20px; }
-    .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 36px; text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5; }
+    .cred-label { font-weight: 700; color: #64748b; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; display: block; margin-bottom: 4px; }
+    .cred-value { font-size: 14px; font-weight: 700; color: #0f172a; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; background: #ffffff; padding: 7px 12px; border-radius: 6px; border: 1px solid #cbd5e1; display: inline-block; word-break: break-all; }
+    .cta-container { text-align: center; margin: 28px 0 20px 0; }
+    .cta-button { display: inline-block; background-color: #264f3c; color: #ffffff !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 32px; border-radius: 8px; box-shadow: 0 2px 6px rgba(38,79,60,0.3); }
+    .security-note { background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 14px; border-radius: 6px; font-size: 12px; color: #92400e; line-height: 1.5; margin-bottom: 20px; }
+    .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 22px 36px; text-align: center; font-size: 11px; color: #94a3b8; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -143,40 +144,37 @@ class EmailService {
     <table class="main" align="center" cellpadding="0" cellspacing="0">
       <tr>
         <td class="header">
+          <div class="header-badge">Staff Onboarding</div>
           <h1>TrackDeal CRM</h1>
-          <p>${organizationName} &bull; Staff Onboarding</p>
+          <p>${organizationName} &bull; Account Setup</p>
         </td>
       </tr>
       <tr>
         <td class="content">
           <div class="greeting">Hello ${staffName},</div>
           <div class="message">
-            Welcome to the team! Your staff account for <strong>${organizationName}</strong> has been successfully created. You can now log in to the portal to manage student leads, admissions follow-ups, and student profiles.
+            Welcome to the team! Your staff account for <strong>${organizationName}</strong> has been configured on <strong>TrackDeal CRM</strong>. You can now log in to manage admissions prospects, scheduled callbacks, and daily lead activities.
           </div>
 
-          <div class="credentials-box">
+          <div class="credentials-card">
             <div class="cred-row">
-              <span class="cred-label">Portal Login URL</span>
-              <div style="font-size: 13px; font-weight: 600; color: #2563eb;">
-                <a href="${resolvedLoginUrl}" style="color: #2563eb; text-decoration: underline;">${resolvedLoginUrl}</a>
+              <span class="cred-label">Login Portal URL</span>
+              <div style="font-size: 13px; font-weight: 600;">
+                <a href="${resolvedLoginUrl}" style="color: #264f3c; text-decoration: underline;">${resolvedLoginUrl}</a>
               </div>
             </div>
-            <div class="cred-row" style="margin-top: 14px;">
-              <span class="cred-label">Registered Username / Email</span>
+            <div class="cred-row">
+              <span class="cred-label">Registered Email / Username</span>
               <span class="cred-value">${resolvedUsername}</span>
             </div>
-            <div class="cred-row" style="margin-top: 14px;">
-              <span class="cred-label">Temporary Password</span>
+            <div class="cred-row">
+              <span class="cred-label">Password</span>
               <span class="cred-value">${password || '••••••••'}</span>
             </div>
-            <div class="cred-row" style="margin-top: 14px;">
+            <div class="cred-row">
               <span class="cred-label">Assigned Role</span>
-              <span style="font-size: 13px; font-weight: 600; color: #334155;">${roleName}</span>
+              <span style="font-size: 13px; font-weight: 700; color: #1e293b;">${roleName}</span>
             </div>
-          </div>
-
-          <div class="security-note">
-            <strong>Security Reminder:</strong> Please change your temporary password immediately upon your first sign-in under Account Settings to ensure account privacy.
           </div>
 
           <div class="cta-container">
@@ -184,14 +182,14 @@ class EmailService {
           </div>
 
           <div class="message" style="font-size: 12px; color: #64748b; margin-bottom: 0;">
-            If you did not expect this invitation or encounter issues logging in, please get in touch with your organization administrator.
+            If you encounter issues accessing your account, please contact your organization administrator or reply to this email.
           </div>
         </td>
       </tr>
       <tr>
         <td class="footer">
           &copy; ${new Date().getFullYear()} TrackDeal CRM &bull; All rights reserved.<br>
-          Automated system communication for ${organizationName}.
+          Automated onboarding communication dispatched for ${organizationName}.
         </td>
       </tr>
     </table>
@@ -210,10 +208,9 @@ Your staff account for ${organizationName} has been generated on TrackDeal CRM.
 Here are your account credentials:
 - Login Portal: ${resolvedLoginUrl}
 - Username / Email: ${resolvedUsername}
-- Temporary Password: ${password || '••••••••'}
+- Password: ${password || '••••••••'}
 - Assigned Role: ${roleName}
 
-Please log in and update your temporary password immediately.
 Portal Link: ${resolvedLoginUrl}
 
 TrackDeal CRM Operations
@@ -258,11 +255,19 @@ TrackDeal CRM Operations
    *     }
    *   ]
    */
+  /**
+   * 2. Daily Staff Operations & Overdue Digest Email (11:00 AM IST)
+   * Automated morning summary dispatched to Organization Administrators detailing:
+   * - Staff work completed in the day (activities, callbacks logged, attended prospects)
+   * - Overdue tasks requiring immediate escalation or action
+   * - Upcoming tasks scheduled for today
+   */
   async sendDailyOverdueTaskDigestEmail({
     toAdmin,
     adminName = 'Administrator',
     organizationName = 'TrackDeal',
     date = new Date(),
+    staffMembers = [],
     staffMembersWithTasks = [],
     dashboardUrl,
   }) {
@@ -277,95 +282,164 @@ TrackDeal CRM Operations
       day: 'numeric',
     });
 
+    // Normalize staff members list (supports both new staffMembers and legacy staffMembersWithTasks)
+    const members = (staffMembers.length > 0 ? staffMembers : staffMembersWithTasks).map((m) => {
+      const completed = m.completedTasks || [];
+      const overdue = m.overdueTasks || (m.tasks || []).filter(t => t.status === 'overdue' || (t.delayLabel && t.delayLabel.toLowerCase().includes('overdue')));
+      const today = m.todayTasks || (m.tasks || []).filter(t => t.status === 'due_today' || (t.delayLabel && t.delayLabel.toLowerCase().includes('today')));
+      return {
+        staffName: m.staffName || 'Staff Member',
+        staffEmail: m.staffEmail || '',
+        role: m.role || 'Staff',
+        completedTasks: completed,
+        overdueTasks: overdue,
+        todayTasks: today,
+      };
+    });
+
     // Calculate aggregated metrics
+    let totalCompleted = 0;
     let totalOverdue = 0;
     let totalDueToday = 0;
-    let totalPending = 0;
 
-    staffMembersWithTasks.forEach((member) => {
-      (member.tasks || []).forEach((t) => {
-        if (t.status === 'overdue' || (t.delayLabel && t.delayLabel.toLowerCase().includes('overdue'))) {
-          totalOverdue++;
-        } else if (t.status === 'due_today' || (t.delayLabel && t.delayLabel.toLowerCase().includes('today'))) {
-          totalDueToday++;
-        } else {
-          totalPending++;
-        }
-      });
+    members.forEach((m) => {
+      totalCompleted += m.completedTasks.length;
+      totalOverdue += m.overdueTasks.length;
+      totalDueToday += m.todayTasks.length;
     });
 
     const resolvedDashboardUrl = dashboardUrl || `${this.appUrl}/education/leads`;
-    const subject = `Daily Task & Follow-up Digest: ${formattedDate} (${totalOverdue} Overdue Tasks)`;
+    const subject = `${organizationName} Daily Operations Digest: ${formattedDate} (${totalOverdue} Overdue, ${totalCompleted} Done)`;
 
     // Build staff sections HTML
-    let staffSectionsHtml = '';
+    let staffCardsHtml = '';
 
-    if (staffMembersWithTasks.length === 0) {
-      staffSectionsHtml = `
+    if (members.length === 0) {
+      staffCardsHtml = `
         <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 24px; text-align: center; color: #166534;">
-          <h4 style="margin: 0 0 6px 0; font-size: 15px; font-weight: 700;">No Overdue or Pending Tasks</h4>
-          <p style="margin: 0; font-size: 13px; color: #15803d;">All staff members are up to date on admissions tasks for today.</p>
+          <h4 style="margin: 0 0 6px 0; font-size: 15px; font-weight: 700;">No Staff Operations Pending</h4>
+          <p style="margin: 0; font-size: 13px; color: #15803d;">All staff members are on track and no open overdue items exist.</p>
         </div>
       `;
     } else {
-      staffSectionsHtml = staffMembersWithTasks.map((member) => {
-        const tasks = member.tasks || [];
-        const memberOverdueCount = tasks.filter(t => t.status === 'overdue' || (t.delayLabel && t.delayLabel.toLowerCase().includes('overdue'))).length;
+      staffCardsHtml = members.map((member) => {
+        const completedCount = member.completedTasks.length;
+        const overdueCount = member.overdueTasks.length;
 
-        const taskRows = tasks.map((task) => {
-          const isOverdue = task.status === 'overdue' || (task.delayLabel && task.delayLabel.toLowerCase().includes('overdue'));
-          const badgeBg = isOverdue ? '#fef2f2' : '#eff6ff';
-          const badgeBorder = isOverdue ? '#fecaca' : '#bfdbfe';
-          const badgeColor = isOverdue ? '#dc2626' : '#2563eb';
-          const badgeText = isOverdue ? (task.delayLabel || 'Overdue') : 'Due Today';
-
-          return `
+        // 1. Render Completed Work Rows
+        let completedRows = '';
+        if (completedCount > 0) {
+          completedRows = member.completedTasks.map((item) => `
             <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 12px 14px; font-size: 13px;">
-                <strong style="color: #0f172a; display: block;">${task.leadName || 'Student Prospect'}</strong>
-                <span style="color: #64748b; font-size: 11px;">${task.leadPhone || ''} ${task.schoolName ? `&bull; ${task.schoolName}` : ''}</span>
+              <td style="padding: 10px 12px; font-size: 12px;">
+                <strong style="color: #0f172a; display: block;">${item.leadName || 'Student Prospect'}</strong>
+                <span style="color: #64748b; font-size: 11px;">${item.leadPhone || ''} ${item.schoolName ? `&bull; ${item.schoolName}` : ''}</span>
               </td>
-              <td style="padding: 12px 14px; font-size: 13px; color: #334155;">
-                ${task.taskTitle || 'Follow-up Call'}
+              <td style="padding: 10px 12px; font-size: 12px; color: #334155;">
+                <div style="font-weight: 600; color: #047857;">${item.actionTitle || 'Activity Logged'}</div>
+                ${item.outcome ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">${item.outcome}</div>` : ''}
               </td>
-              <td style="padding: 12px 14px; font-size: 12px; color: #475569; font-family: monospace;">
-                ${task.dueTime ? `${task.dueTime}` : (task.dueDate || 'Today')}
+              <td style="padding: 10px 12px; font-size: 11px; color: #64748b; text-align: right; white-space: nowrap;">
+                ${item.completedAt || 'Today'}
               </td>
-              <td style="padding: 12px 14px; text-align: right;">
-                <span style="display: inline-block; background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor}; font-weight: 700; font-size: 11px; padding: 4px 8px; border-radius: 9999px;">
-                  ${badgeText}
+            </tr>
+          `).join('');
+        }
+
+        // 2. Render Overdue Tasks Rows
+        let overdueRows = '';
+        if (overdueCount > 0) {
+          overdueRows = member.overdueTasks.map((item) => `
+            <tr style="border-bottom: 1px solid #f1f5f9; background-color: #fffbfb;">
+              <td style="padding: 10px 12px; font-size: 12px;">
+                <strong style="color: #0f172a; display: block;">${item.leadName || 'Student Prospect'}</strong>
+                <span style="color: #64748b; font-size: 11px;">${item.leadPhone || ''} ${item.schoolName ? `&bull; ${item.schoolName}` : ''}</span>
+              </td>
+              <td style="padding: 10px 12px; font-size: 12px; color: #334155;">
+                <div style="font-weight: 600; color: #b91c1c;">${item.taskTitle || 'Scheduled Follow-up'}</div>
+                <div style="font-size: 11px; color: #64748b;">Scheduled: ${item.dueTime || item.dueDate || 'Past Due'}</div>
+              </td>
+              <td style="padding: 10px 12px; text-align: right; white-space: nowrap;">
+                <span style="display: inline-block; background-color: #fee2e2; border: 1px solid #fecaca; color: #b91c1c; font-weight: 700; font-size: 10px; padding: 3px 8px; border-radius: 9999px;">
+                  ${item.delayLabel || 'Overdue'}
                 </span>
               </td>
             </tr>
-          `;
-        }).join('');
+          `).join('');
+        }
 
         return `
-          <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 20px; overflow: hidden;">
-            <div style="background-color: #f8fafc; padding: 14px 18px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <strong style="font-size: 14px; color: #0f172a;">${member.staffName}</strong>
-                <span style="font-size: 12px; color: #64748b; margin-left: 6px;">(${member.role || 'Staff'})</span>
-              </div>
-              <div>
-                ${memberOverdueCount > 0
-                  ? `<span style="background-color: #fee2e2; color: #b91c1c; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;">${memberOverdueCount} Overdue</span>`
-                  : `<span style="background-color: #ecfdf5; color: #047857; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;">On Track</span>`}
-              </div>
-            </div>
-            <table style="width: 100%; text-align: left; border-collapse: collapse;">
-              <thead>
-                <tr style="background-color: #fcfcfc; border-bottom: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
-                  <th style="padding: 8px 14px;">Lead / Student</th>
-                  <th style="padding: 8px 14px;">Task</th>
-                  <th style="padding: 8px 14px;">Scheduled</th>
-                  <th style="padding: 8px 14px; text-align: right;">Status</th>
+          <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <!-- Staff Member Header -->
+            <div style="background-color: #f8fafc; padding: 14px 18px; border-bottom: 1px solid #e2e8f0;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td>
+                    <strong style="font-size: 14px; color: #0f172a;">${member.staffName}</strong>
+                    <span style="display: inline-block; background-color: #e2e8f0; color: #334155; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 4px; margin-left: 6px;">
+                      ${member.role}
+                    </span>
+                    ${member.staffEmail ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">${member.staffEmail}</div>` : ''}
+                  </td>
+                  <td style="text-align: right; vertical-align: middle;">
+                    <span style="display: inline-block; background-color: ${completedCount > 0 ? '#ecfdf5' : '#f1f5f9'}; color: ${completedCount > 0 ? '#047857' : '#64748b'}; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; margin-right: 6px;">
+                      ${completedCount} Done
+                    </span>
+                    <span style="display: inline-block; background-color: ${overdueCount > 0 ? '#fee2e2' : '#f1f5f9'}; color: ${overdueCount > 0 ? '#b91c1c' : '#64748b'}; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px;">
+                      ${overdueCount} Overdue
+                    </span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                ${taskRows}
-              </tbody>
-            </table>
+              </table>
+            </div>
+
+            <!-- Overdue Tasks Table (if any) -->
+            ${overdueCount > 0 ? `
+              <div style="padding: 12px 16px 4px 16px;">
+                <div style="font-size: 11px; font-weight: 700; color: #b91c1c; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
+                  Action Required &bull; Overdue Tasks (${overdueCount})
+                </div>
+                <table style="width: 100%; text-align: left; border-collapse: collapse; margin-bottom: 12px;">
+                  <thead>
+                    <tr style="background-color: #fef2f2; font-size: 10px; color: #991b1b; text-transform: uppercase; letter-spacing: 0.04em;">
+                      <th style="padding: 6px 12px;">Prospect</th>
+                      <th style="padding: 6px 12px;">Task</th>
+                      <th style="padding: 6px 12px; text-align: right;">Delay</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${overdueRows}
+                  </tbody>
+                </table>
+              </div>
+            ` : ''}
+
+            <!-- Completed Work Table (if any) -->
+            ${completedCount > 0 ? `
+              <div style="padding: 12px 16px 8px 16px; ${overdueCount > 0 ? 'border-top: 1px dashed #e2e8f0;' : ''}">
+                <div style="font-size: 11px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
+                  Productivity Proof &bull; Work Completed in Day (${completedCount})
+                </div>
+                <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                  <thead>
+                    <tr style="background-color: #f0fdf4; font-size: 10px; color: #166534; text-transform: uppercase; letter-spacing: 0.04em;">
+                      <th style="padding: 6px 12px;">Prospect</th>
+                      <th style="padding: 6px 12px;">Action Taken</th>
+                      <th style="padding: 6px 12px; text-align: right;">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${completedRows}
+                  </tbody>
+                </table>
+              </div>
+            ` : ''}
+
+            ${completedCount === 0 && overdueCount === 0 ? `
+              <div style="padding: 18px; text-align: center; color: #94a3b8; font-size: 12px;">
+                No overdue tasks or actions recorded in this window.
+              </div>
+            ` : ''}
           </div>
         `;
       }).join('');
@@ -379,23 +453,24 @@ TrackDeal CRM Operations
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject}</title>
   <style>
-    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }
-    .wrapper { width: 100%; table-layout: fixed; background-color: #f8fafc; padding: 40px 0; }
-    .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 660px; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
-    .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 36px; text-align: left; }
-    .header h1 { margin: 0; font-size: 20px; color: #ffffff; font-weight: 700; }
-    .header p { margin: 6px 0 0 0; font-size: 13px; color: #94a3b8; }
+    body { margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #f1f5f9; padding: 32px 0; }
+    .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 680px; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.04); }
+    .header { background: linear-gradient(135deg, #1b3d2f 0%, #264f3c 100%); padding: 30px 36px; text-align: left; }
+    .header-badge { display: inline-block; background-color: rgba(255,255,255,0.18); color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 9999px; margin-bottom: 8px; }
+    .header h1 { margin: 0; font-size: 21px; color: #ffffff; font-weight: 800; }
+    .header p { margin: 6px 0 0 0; font-size: 13px; color: #d1fae5; }
     .content { padding: 32px 36px; }
-    .metric-grid { display: table; width: 100%; margin-bottom: 28px; }
-    .metric-cell { display: table-cell; width: 33.33%; padding: 0 8px; vertical-align: top; }
-    .metric-cell:first-child { padding-left: 0; }
-    .metric-cell:last-child { padding-right: 0; }
-    .metric-card { border-radius: 12px; padding: 14px 16px; text-align: center; }
-    .metric-number { font-size: 22px; font-weight: 800; margin: 4px 0 0 0; }
-    .metric-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .greeting { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+    .subtext { font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 24px; }
+    .kpi-table { width: 100%; border-collapse: separate; border-spacing: 8px; margin-bottom: 24px; }
+    .kpi-cell { padding: 14px 12px; border-radius: 10px; text-align: center; width: 25%; }
+    .kpi-num { font-size: 22px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+    .kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+    .section-title { font-size: 13px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px; }
     .cta-container { text-align: center; margin: 32px 0 20px 0; }
-    .cta-button { display: inline-block; background-color: #2563eb; color: #ffffff !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 28px; border-radius: 10px; box-shadow: 0 2px 6px rgba(37,99,235,0.25); }
-    .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 36px; text-align: center; font-size: 12px; color: #94a3b8; }
+    .cta-button { display: inline-block; background-color: #264f3c; color: #ffffff !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 30px; border-radius: 8px; box-shadow: 0 2px 6px rgba(38,79,60,0.3); }
+    .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 22px 36px; text-align: center; font-size: 11px; color: #94a3b8; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -403,59 +478,55 @@ TrackDeal CRM Operations
     <table class="main" align="center" cellpadding="0" cellspacing="0">
       <tr>
         <td class="header">
-          <h1>Daily Operations Digest</h1>
-          <p>${organizationName} &bull; ${formattedDate}</p>
+          <div class="header-badge">Executive Daily Digest &bull; 11:00 AM IST</div>
+          <h1>${organizationName}</h1>
+          <p>Daily Operations &bull; Staff Performance Summary &bull; ${formattedDate}</p>
         </td>
       </tr>
       <tr>
         <td class="content">
-          <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 8px;">
-            Good Morning, ${adminName}
-          </div>
-          <div style="font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 24px;">
-            Here is your daily morning summary of all pending and overdue follow-up tasks across your team members.
+          <div class="greeting">Good Morning, ${adminName}</div>
+          <div class="subtext">
+            Here is your daily 11:00 AM executive operations summary of work completed by your staff today, along with pending overdue tasks requiring attention.
           </div>
 
           <!-- KPI Metric Highlights -->
-          <div class="metric-grid">
-            <div class="metric-cell">
-              <div class="metric-card" style="background-color: #fef2f2; border: 1px solid #fee2e2;">
-                <div class="metric-label" style="color: #dc2626;">Overdue Tasks</div>
-                <div class="metric-number" style="color: #b91c1c;">${totalOverdue}</div>
-              </div>
-            </div>
-            <div class="metric-cell">
-              <div class="metric-card" style="background-color: #eff6ff; border: 1px solid #dbeafe;">
-                <div class="metric-label" style="color: #2563eb;">Due Today</div>
-                <div class="metric-number" style="color: #1d4ed8;">${totalDueToday}</div>
-              </div>
-            </div>
-            <div class="metric-cell">
-              <div class="metric-cell">
-                <div class="metric-card" style="background-color: #f8fafc; border: 1px solid #e2e8f0;">
-                  <div class="metric-label" style="color: #64748b;">Staff with Tasks</div>
-                  <div class="metric-number" style="color: #0f172a;">${staffMembersWithTasks.length}</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <table class="kpi-table" cellpadding="0" cellspacing="0">
+            <tr>
+              <td class="kpi-cell" style="background-color: #ecfdf5; border: 1px solid #a7f3d0;">
+                <div class="kpi-num" style="color: #047857;">${totalCompleted}</div>
+                <div class="kpi-lbl" style="color: #065f46;">Work Done Today</div>
+              </td>
+              <td class="kpi-cell" style="background-color: #fef2f2; border: 1px solid #fecaca;">
+                <div class="kpi-num" style="color: #b91c1c;">${totalOverdue}</div>
+                <div class="kpi-lbl" style="color: #991b1b;">Overdue Tasks</div>
+              </td>
+              <td class="kpi-cell" style="background-color: #eff6ff; border: 1px solid #bfdbfe;">
+                <div class="kpi-num" style="color: #1d4ed8;">${totalDueToday}</div>
+                <div class="kpi-lbl" style="color: #1e40af;">Due Today</div>
+              </td>
+              <td class="kpi-cell" style="background-color: #f8fafc; border: 1px solid #e2e8f0;">
+                <div class="kpi-num" style="color: #0f172a;">${members.length}</div>
+                <div class="kpi-lbl" style="color: #475569;">Active Staff</div>
+              </td>
+            </tr>
+          </table>
 
-          <!-- Staff Breakdown Lists -->
-          <div style="margin-top: 24px;">
-            <h3 style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.03em;">
-              Staff Member Task Allocations
-            </h3>
-            ${staffSectionsHtml}
+          <!-- Staff Breakdown List -->
+          <div>
+            <div class="section-title">Staff Activity &amp; Task Breakdown</div>
+            ${staffCardsHtml}
           </div>
 
           <div class="cta-container">
-            <a href="${resolvedDashboardUrl}" class="cta-button">Open CRM Follow-ups Dashboard</a>
+            <a href="${resolvedDashboardUrl}" class="cta-button">Open CRM Operations Dashboard</a>
           </div>
         </td>
       </tr>
       <tr>
         <td class="footer">
-          &copy; ${new Date().getFullYear()} TrackDeal CRM &bull; Automated Daily Task Digest for ${organizationName}
+          &copy; ${new Date().getFullYear()} TrackDeal CRM &bull; Automated 11:00 AM IST Executive Operations Digest for ${organizationName}.<br>
+          Dispatched centrally from contact@trackdeal.in.
         </td>
       </tr>
     </table>
@@ -465,17 +536,19 @@ TrackDeal CRM Operations
     `;
 
     const text = `
-Daily Task & Follow-up Digest: ${formattedDate}
-Organization: ${organizationName}
+${organizationName} - Daily Operations Digest (${formattedDate})
+Administrator: ${adminName}
 
-Summary:
-- Total Overdue Tasks: ${totalOverdue}
-- Total Due Today: ${totalDueToday}
-- Staff Members with Open Tasks: ${staffMembersWithTasks.length}
+Executive Summary:
+- Work Done Today: ${totalCompleted}
+- Overdue Tasks: ${totalOverdue}
+- Due Today: ${totalDueToday}
+- Active Staff: ${members.length}
 
-Review follow-ups in CRM: ${resolvedDashboardUrl}
+Review follow-ups & live operations in TrackDeal CRM:
+${resolvedDashboardUrl}
 
-TrackDeal CRM Operations
+TrackDeal Operations Team (contact@trackdeal.in)
     `.trim();
 
     return this.sendEmail({

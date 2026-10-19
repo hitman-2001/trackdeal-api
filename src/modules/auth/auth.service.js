@@ -3,7 +3,7 @@
 const { BaseService } = require('../../shared/base/BaseService');
 const { UserRepository } = require('../user/user.repository');
 const { RefreshTokenRepository } = require('./refresh-token.repository');
-const { UnauthorizedError, ConflictError, NotFoundError, ForbiddenError } = require('../../shared/errors');
+const { UnauthorizedError, ConflictError, NotFoundError, ForbiddenError, BusinessRuleError } = require('../../shared/errors');
 const { AUDIT_ACTIONS, EVENTS } = require('../../shared/constants/app.constants');
 const { tenantContext } = require('../../shared/context/tenant-context');
 const bcrypt = require('bcryptjs');
@@ -394,28 +394,9 @@ class AuthService extends BaseService {
    * Initiate password reset.
    */
   async forgotPassword(email) {
-    const user = await tenantContext.run({ isSystemOverride: true }, () =>
-      this.userRepository.findByEmail(email)
+    throw new BusinessRuleError(
+      'Self-service password recovery is disabled on this platform. Please contact your organization administrator to reset or update your password.'
     );
-
-    // Always respond success to prevent email enumeration
-    if (!user) return;
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    await tenantContext.run({ organizationId: user.organizationId }, async () => {
-      await this.userRepository.update(user.id, {
-        passwordResetToken: resetToken,
-        passwordResetExpires: tokenExpiry,
-      });
-
-      await this.publishEvent(EVENTS.PASSWORD_RESET, {
-        userId: user.id,
-        email: user.email,
-        resetToken,
-      });
-    });
   }
 
   /**
