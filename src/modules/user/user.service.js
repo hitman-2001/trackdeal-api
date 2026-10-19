@@ -128,15 +128,28 @@ class UserService extends BaseService {
       targetBranchId = actor.branchId;
     }
 
-    let firstName = data.firstName;
-    let lastName = data.lastName;
+    // Capitalize first letter of every name word (Title Case)
+    const toTitleCase = (str) => {
+      if (!str || typeof str !== 'string') return '';
+      return str
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+    };
+
+    let firstName = data.firstName ? toTitleCase(data.firstName) : '';
+    let lastName = data.lastName ? toTitleCase(data.lastName) : '';
+
     if (!firstName && data.name) {
-      const parts = data.name.trim().split(/\s+/);
-      firstName = parts[0];
-      lastName = parts.slice(1).join(' ') || parts[0];
+      const parts = data.name.trim().split(/\s+/).filter(Boolean);
+      firstName = toTitleCase(parts[0]);
+      lastName = parts.length > 1 ? toTitleCase(parts.slice(1).join(' ')) : '';
     }
-    if (!lastName && firstName) {
-      lastName = firstName;
+
+    if (!firstName) {
+      firstName = 'Staff';
     }
 
     // Clean up any pending invitation for this email
@@ -147,8 +160,8 @@ class UserService extends BaseService {
 
     const user = await this.userRepository.create({
       ...data,
-      firstName: firstName || 'Staff',
-      lastName: lastName || 'Member',
+      firstName,
+      lastName: lastName || '',
       email: emailLower,
       password: hashedPassword,
       organizationId: actor.organizationId,
@@ -172,25 +185,32 @@ class UserService extends BaseService {
     if (data.password) {
       try {
         const { emailService } = require('../email/email.service');
-        const staffName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Staff Member';
+        const staffName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Staff Member';
         let roleName = 'Staff Member';
         let orgName = actor?.organizationName;
+        let isEducation = false;
 
         const dispatchWelcome = async () => {
-          if (!orgName && actor?.organizationId) {
+          if (actor?.organizationId) {
             try {
               const { Organization } = require('../organization/organization.model');
-              const org = await Organization.findById(actor.organizationId).select('name').lean();
+              const org = await Organization.findById(actor.organizationId).select('name vertical').lean();
               if (org?.name) orgName = org.name;
+              if (org?.vertical === 'education') isEducation = true;
             } catch (_) {}
           }
 
           if (data.roleId) {
             try {
               const { Role } = require('../authorization/role.model');
-              const assignedRole = await Role.findById(data.roleId).select('name').lean();
+              const assignedRole = await Role.findById(data.roleId).select('name code').lean();
               if (assignedRole?.name) roleName = assignedRole.name;
             } catch (_) {}
+          }
+
+          // In education vertical, map Agent/broker terminology to Staff
+          if (isEducation) {
+            roleName = roleName.replace(/agent/gi, 'Staff');
           }
 
           return emailService.sendStaffWelcomeCredentialsEmail({
@@ -200,6 +220,7 @@ class UserService extends BaseService {
             password: data.password,
             roleName,
             organizationName: orgName || 'TrackDeal CRM',
+            isEducation,
           });
         };
 

@@ -39,7 +39,7 @@ const userSchema = new mongoose.Schema(
 
     // Identity
     firstName: { type: String, required: true, trim: true },
-    lastName: { type: String, required: true, trim: true },
+    lastName: { type: String, required: false, default: '', trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     phone: { type: String, trim: true },
     mobile: { type: String, trim: true }, // Keeping mobile for legacy compatibility

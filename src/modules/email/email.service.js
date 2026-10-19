@@ -20,7 +20,7 @@ class EmailService {
     this.user = options.user || process.env.SMTP_USER || '';
     this.pass = options.pass || process.env.SMTP_PASS || '';
     this.from = options.from || process.env.SMTP_FROM || process.env.EMAIL_FROM || 'TrackDeal CRM <contact@trackdeal.in>';
-    this.appUrl = options.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:5173';
+    this.appUrl = options.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || 'https://trackdeal.in';
   }
 
   /**
@@ -105,15 +105,17 @@ class EmailService {
     email,
     password,
     loginUrl,
-    organizationName = 'TrackDeal',
+    organizationName = 'TrackDeal CRM',
     roleName = 'Staff Member',
+    isEducation = false,
   }) {
     const targetEmail = to || email;
     if (!targetEmail) {
       throw new Error('Recipient email is required for staff credentials.');
     }
 
-    const resolvedLoginUrl = loginUrl || `${this.appUrl}/login`;
+    const cleanBaseUrl = (this.appUrl || 'https://trackdeal.in').replace(/\/+$/, '');
+    const resolvedLoginUrl = loginUrl || `${cleanBaseUrl}/login`;
     const resolvedUsername = username || email || targetEmail;
     const subject = `Welcome to ${organizationName} - Your Account Login Credentials`;
 
@@ -152,19 +154,23 @@ class EmailService {
     <table class="main" align="center" cellpadding="0" cellspacing="0">
       <tr>
         <td class="header">
-          <div class="header-badge">Staff Onboarding</div>
-          <h1>TrackDeal CRM</h1>
-          <p>${organizationName} &bull; Account Setup</p>
+          <div class="header-badge">${isEducation ? 'Staff Onboarding' : 'Team Onboarding'}</div>
+          <h1>${organizationName}</h1>
+          <p>TrackDeal CRM &bull; Account Setup</p>
         </td>
       </tr>
       <tr>
         <td class="content">
           <div class="greeting">Hello ${staffName},</div>
           <div class="message">
-            Welcome to the team! Your staff account for <strong>${organizationName}</strong> has been configured on <strong>TrackDeal CRM</strong>. You can now log in to manage admissions prospects, scheduled callbacks, and daily lead activities.
+            Welcome to the team! Your staff account for <strong>${organizationName}</strong> has been configured on <strong>TrackDeal CRM</strong>. You can now log in to manage ${isEducation ? 'student admissions, scheduled callbacks, and daily counseling activities' : 'leads, scheduled callbacks, and daily deal activities'}.
           </div>
 
           <div class="credentials-card">
+            <div class="cred-row">
+              <span class="cred-label">Organization</span>
+              <span style="font-size: 14px; font-weight: 700; color: #1e293b;">${organizationName}</span>
+            </div>
             <div class="cred-row">
               <span class="cred-label">Login Portal URL</span>
               <div style="font-size: 13px; font-weight: 600;">
@@ -176,7 +182,7 @@ class EmailService {
               <span class="cred-value">${resolvedUsername}</span>
             </div>
             <div class="cred-row">
-              <span class="cred-label">Password</span>
+              <span class="cred-label">Temporary Password</span>
               <span class="cred-value">${password || '••••••••'}</span>
             </div>
             <div class="cred-row">
@@ -186,7 +192,7 @@ class EmailService {
           </div>
 
           <div class="cta-container">
-            <a href="${resolvedLoginUrl}" class="cta-button">Log In to Your Workspace</a>
+            <a href="${resolvedLoginUrl}" class="cta-button">Log In to ${organizationName}</a>
           </div>
 
           <div class="message" style="font-size: 12px; color: #64748b; margin-bottom: 0;">
@@ -214,6 +220,7 @@ Hello ${staffName},
 Your staff account for ${organizationName} has been generated on TrackDeal CRM.
 
 Here are your account credentials:
+- Organization: ${organizationName}
 - Login Portal: ${resolvedLoginUrl}
 - Username / Email: ${resolvedUsername}
 - Password: ${password || '••••••••'}
@@ -221,7 +228,7 @@ Here are your account credentials:
 
 Portal Link: ${resolvedLoginUrl}
 
-TrackDeal CRM Operations
+${organizationName} • TrackDeal CRM Operations
     `.trim();
 
     return this.sendEmail({
