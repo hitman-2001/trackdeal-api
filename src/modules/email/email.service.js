@@ -33,12 +33,12 @@ class EmailService {
       throw new Error('Email recipient "to" address is required.');
     }
 
-    // Check if nodemailer is installed in the runtime environment
     let nodemailer = null;
+    let nodemailerErr = null;
     try {
       nodemailer = require('nodemailer');
-    } catch {
-      // nodemailer not yet in package.json dependencies
+    } catch (err) {
+      nodemailerErr = err.message;
     }
 
     if (nodemailer && this.user && this.pass) {
@@ -69,7 +69,15 @@ class EmailService {
     }
 
     // Standalone Simulation / Development Mode
+    let reason = '';
+    if (!nodemailer) {
+      reason = `nodemailer module is missing (${nodemailerErr || 'Cannot find module nodemailer'}). Rebuild Docker container or run npm install.`;
+    } else if (!this.user || !this.pass) {
+      reason = `SMTP_USER or SMTP_PASS environment variable is not configured in .env (user=${this.user ? 'set' : 'missing'}, pass=${this.pass ? 'set' : 'missing'}).`;
+    }
+
     console.log('\n==================== [TrackDeal Email Dispatch (Simulation Mode)] ====================');
+    if (reason) console.log(`Note:    ${reason}`);
     console.log(`To:      ${to}`);
     console.log(`From:    ${this.from}`);
     console.log(`Subject: ${subject}`);
