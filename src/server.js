@@ -50,8 +50,12 @@ async function start() {
     // 8. Start enterprise task reminder scheduler (runs every 60s)
     taskReminderScheduler.startScheduler(60000);
 
-    // 9. Start daily 11:00 AM IST executive staff operations digest scheduler
-    dailyDigestScheduler.startScheduler();
+    // 9. Start daily 11:00 AM IST executive staff operations digest scheduler (Production only)
+    if (env.NODE_ENV === 'production' || process.env.ENABLE_MAIL_CRON === 'true') {
+      dailyDigestScheduler.startScheduler();
+    } else {
+      fastify.log.info('[DailyDigestScheduler] Local development mode: mail cron job disabled.');
+    }
 
     fastify.log.info(`
 ╔═══════════════════════════════════════════════╗

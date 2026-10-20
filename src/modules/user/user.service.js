@@ -191,10 +191,11 @@ class UserService extends BaseService {
         let isEducation = false;
 
         const dispatchWelcome = async () => {
-          if (actor?.organizationId) {
+          const targetOrgId = user.organizationId || actor?.organizationId || data.organizationId;
+          if (targetOrgId) {
             try {
               const { Organization } = require('../organization/organization.model');
-              const org = await Organization.findById(actor.organizationId).select('name vertical').lean();
+              const org = await Organization.findById(targetOrgId).select('name vertical').lean();
               if (org?.name) orgName = org.name;
               if (org?.vertical === 'education') isEducation = true;
             } catch (_) {}

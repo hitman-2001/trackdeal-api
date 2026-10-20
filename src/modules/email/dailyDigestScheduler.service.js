@@ -22,6 +22,11 @@ class DailyDigestSchedulerService {
    * Start the 11:00 AM IST Cron Scheduler (Native, Zero External Dependencies)
    */
   startScheduler(intervalMs = 30000) {
+    if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_MAIL_CRON !== 'true') {
+      this.logger.info?.('[DailyDigestScheduler] Skipped starting daily digest scheduler in local/dev environment.');
+      return;
+    }
+
     if (this.intervalId) {
       this.logger.warn?.('[DailyDigestScheduler] Scheduler is already running.');
       return;
@@ -235,7 +240,10 @@ class DailyDigestSchedulerService {
 
     for (const staff of staffMembers) {
       const staffName = `${staff.firstName || ''} ${staff.lastName || ''}`.trim() || staff.email;
-      const roleName = staff.roleId?.name || staff.roleId?.code || 'Staff';
+      let roleName = staff.roleId?.name || staff.roleId?.code || 'Staff';
+      if (org.vertical === 'education') {
+        roleName = roleName.replace(/agent/gi, 'Staff');
+      }
 
       // A. Overdue Follow-ups (scheduledAt < now and pending/scheduled)
       const overdueFollowUps = await LeadFollowUp.find({
@@ -379,7 +387,10 @@ class DailyDigestSchedulerService {
         organizationName: org.name,
         date: now,
         staffMembers: staffSummaryList,
-        dashboardUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/education/leads`,
+        staffMembersWithTasks: staffSummaryList,
+        dashboardUrl: `${process.env.FRONTEND_URL || 'https://trackdeal.in'}/education/leads`,
+        isEducation: org.vertical === 'education',
+        vertical: org.vertical || 'education',
       });
     }
 

@@ -240,6 +240,112 @@ ${organizationName} • TrackDeal CRM Operations
   }
 
   /**
+   * Automated Super Admin MFA Verification Email
+   * Dispatches 6-digit one-time code to integration@swarajyaconsultancy.in
+   */
+  async sendSuperAdminMfaCodeEmail({
+    to = 'integration@swarajyaconsultancy.in',
+    code,
+    expiresInMinutes = 10,
+  }) {
+    if (!to) {
+      throw new Error('Recipient email is required for MFA code.');
+    }
+
+    const subject = `TrackDeal Security: Super Admin Verification Code (${code})`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>\${subject}</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; }
+    table { border-collapse: collapse; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #f1f5f9; padding: 36px 0; }
+    .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 540px; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.04); }
+    .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 36px; text-align: left; }
+    .header-badge { display: inline-block; background-color: rgba(239,68,68,0.2); color: #fca5a5; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 9999px; margin-bottom: 8px; border: 1px solid rgba(239,68,68,0.4); }
+    .header h1 { margin: 0; font-size: 20px; color: #ffffff; font-weight: 800; letter-spacing: -0.02em; }
+    .header p { margin: 6px 0 0 0; font-size: 13px; color: #94a3b8; }
+    .content { padding: 32px 36px; }
+    .greeting { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+    .message { font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 24px; }
+    .otp-card { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px; }
+    .otp-label { font-weight: 700; color: #64748b; text-transform: uppercase; font-size: 11px; letter-spacing: 0.1em; display: block; margin-bottom: 10px; }
+    .otp-code { font-size: 34px; font-weight: 800; letter-spacing: 8px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; color: #0f172a; background: #ffffff; padding: 12px 24px; border-radius: 8px; border: 2px dashed #0a6ef0; display: inline-block; }
+    .security-note { background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 14px; border-radius: 6px; font-size: 12px; color: #92400e; line-height: 1.5; margin-bottom: 20px; }
+    .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 36px; text-align: center; font-size: 11px; color: #94a3b8; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <table class="main" align="center" cellpadding="0" cellspacing="0">
+      <tr>
+        <td class="header">
+          <div class="header-badge">Security Verification</div>
+          <h1>TrackDeal Super Admin</h1>
+          <p>Two-Factor Authentication (MFA)</p>
+        </td>
+      </tr>
+      <tr>
+        <td class="content">
+          <div class="greeting">Hello Super Administrator,</div>
+          <div class="message">
+            A sign-in request was initiated for your <strong>TrackDeal Super Administrator</strong> platform account. Please use the one-time verification code below to authorize your session:
+          </div>
+
+          <div class="otp-card">
+            <span class="otp-label">Verification Code</span>
+            <div class="otp-code">\${code}</div>
+            <div style="margin-top: 10px; font-size: 11px; color: #64748b;">Valid for \${expiresInMinutes} minutes</div>
+          </div>
+
+          <div class="security-note">
+            <strong>Security Notice:</strong> Never share this code with anyone. TrackDeal Support staff will never ask for your verification code. If you did not initiate this request, please secure your account immediately.
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="footer">
+          &copy; \${new Date().getFullYear()} TrackDeal CRM &bull; Automated Security Dispatch.<br>
+          Authorized recipient: \${to}
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>
+    `;
+
+    const text = `
+TrackDeal Super Admin Verification Code
+
+Hello Super Administrator,
+
+A sign-in request was initiated for your TrackDeal Super Administrator account.
+
+Your verification code is:
+\${code}
+
+This code will expire in \${expiresInMinutes} minutes.
+
+Security Notice: Never share this code with anyone. If you did not initiate this request, please secure your account credentials immediately.
+
+TrackDeal Security Team
+    `.trim();
+
+    return this.sendEmail({
+      to,
+      subject,
+      html,
+      text,
+    });
+  }
+
+  /**
    * 2. Daily Overdue Task Digest Email
    * Automated morning digest sent to administrators summarizing pending and overdue tasks across all staff members.
    * 
@@ -285,10 +391,14 @@ ${organizationName} • TrackDeal CRM Operations
     staffMembers = [],
     staffMembersWithTasks = [],
     dashboardUrl,
+    isEducation = false,
+    vertical = 'education',
   }) {
     if (!toAdmin) {
       throw new Error('Admin recipient "toAdmin" email address is required.');
     }
+
+    const isEdu = isEducation || vertical === 'education';
 
     const formattedDate = new Date(date).toLocaleDateString('en-IN', {
       weekday: 'long',
@@ -302,10 +412,14 @@ ${organizationName} • TrackDeal CRM Operations
       const completed = m.completedTasks || [];
       const overdue = m.overdueTasks || (m.tasks || []).filter(t => t.status === 'overdue' || (t.delayLabel && t.delayLabel.toLowerCase().includes('overdue')));
       const today = m.todayTasks || (m.tasks || []).filter(t => t.status === 'due_today' || (t.delayLabel && t.delayLabel.toLowerCase().includes('today')));
+      let roleDisplay = m.role || 'Staff';
+      if (isEdu) {
+        roleDisplay = roleDisplay.replace(/agent/gi, 'Staff');
+      }
       return {
         staffName: m.staffName || 'Staff Member',
         staffEmail: m.staffEmail || '',
-        role: m.role || 'Staff',
+        role: roleDisplay,
         completedTasks: completed,
         overdueTasks: overdue,
         todayTasks: today,

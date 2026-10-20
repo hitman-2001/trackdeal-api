@@ -139,6 +139,49 @@ class AuthService extends BaseService {
       user.lockoutUntil = undefined;
       await user.save();
 
+      // Check for Super Admin Multi-Factor Authentication (MFA)
+      const roleCode = await resolveRoleCode(user);
+      const isSuperAdmin = roleCode === 'super_admin' || roleCode === 'SUPER_ADMIN' || user.email === 'integration@swarajyaconsultancy.in';
+
+      if (isSuperAdmin) {
+        const crypto = require('crypto');
+        const verificationCode = crypto.randomInt(100000, 999999).toString();
+        const tempMfaToken = crypto.randomBytes(32).toString('hex');
+        const mfaTokenHash = crypto.createHash('sha256').update(tempMfaToken).digest('hex');
+
+        user.mfaCode = verificationCode;
+        user.mfaExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        user.mfaToken = mfaTokenHash;
+        await user.save();
+
+        const { emailService } = require('../email/email.service');
+        const mfaTargetEmail = process.env.SUPER_ADMIN_MFA_EMAIL || 'integration@swarajyaconsultancy.in';
+
+        emailService.sendSuperAdminMfaCodeEmail({
+          to: mfaTargetEmail,
+          code: verificationCode,
+          expiresInMinutes: 10,
+        }).catch((err) => {
+          console.error('[AuthService] Failed to send Super Admin MFA email:', err.message);
+        });
+
+        await this.logAudit({
+          action: AUDIT_ACTIONS.LOGIN,
+          entity: 'User',
+          entityId: user.id,
+          userId: user.id,
+          description: `Super Admin MFA challenge dispatched to '${mfaTargetEmail}'`,
+          requestMetadata: meta,
+        });
+
+        return {
+          mfaRequired: true,
+          mfaToken: tempMfaToken,
+          email: mfaTargetEmail,
+          message: `A verification code has been sent to ${mfaTargetEmail}`,
+        };
+      }
+
       // Build token payload and sign tokens
       const tokenPayload = await this._buildTokenPayload(user);
       const accessToken = this.tokenService.signAccessToken(tokenPayload);
@@ -195,6 +238,147 @@ class AuthService extends BaseService {
         accessToken,
         refreshToken,
         user: sanitizedUser,
+      };
+    });
+  }
+
+  /**
+   * Verify Super Admin MFA Code
+   * @param {{ mfaToken: string, code: string }} payload
+   * @param {object} meta - { ip, userAgent }
+   */
+  async verifyMfa(payload, meta = {}) {
+    const { mfaToken, code } = payload || {};
+    if (!mfaToken || !code) {
+      throw new ValidationError('MFA session token and verification code are required');
+    }
+
+    const crypto = require('crypto');
+    const mfaTokenHash = crypto.createHash('sha256').update(String(mfaToken).trim()).digest('hex');
+
+    return tenantContext.run({ isSystemOverride: true }, async () => {
+      const user = await this.userRepository.model.findOne({
+        mfaToken: mfaTokenHash,
+        mfaExpiresAt: { $gt: new Date() },
+      }).select('+mfaCode +mfaToken +mfaExpiresAt +password');
+
+      if (!user) {
+        throw new UnauthorizedError('Verification code has expired or session is invalid. Please sign in again.');
+      }
+
+      if (String(user.mfaCode).trim() !== String(code).trim()) {
+        throw new UnauthorizedError('Invalid verification code. Please check your email and try again.');
+      }
+
+      // Clear MFA temporary values
+      user.mfaCode = undefined;
+      user.mfaToken = undefined;
+      user.mfaExpiresAt = undefined;
+      user.loginAttempts = 0;
+      user.lockoutUntil = undefined;
+      await user.save();
+
+      // Build token payload and sign tokens
+      const tokenPayload = await this._buildTokenPayload(user);
+      const accessToken = this.tokenService.signAccessToken(tokenPayload);
+      const refreshToken = this.tokenService.signRefreshToken({ id: user.id });
+
+      // Track device and last login info
+      const deviceMeta = this._parseUserAgent(meta.userAgent);
+      await this.userRepository.trackDevice(user.id, deviceMeta);
+      await this.userRepository.updateLastLogin(user.id, meta.ip);
+
+      // Save hashed refresh token to DB
+      const tokenHash = this._hashToken(refreshToken);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+      await this.refreshTokenRepository.create({
+        token: tokenHash,
+        user: user.id,
+        device: deviceMeta.deviceType,
+        ip: meta.ip,
+        expiresAt,
+      });
+
+      // Publish event
+      await this.publishEvent(EVENTS.USER_LOGGED_IN, {
+        userId: user.id,
+        email: user.email,
+        ip: meta.ip,
+      });
+
+      await this.logAudit({
+        action: AUDIT_ACTIONS.LOGIN,
+        entity: 'User',
+        entityId: user.id,
+        userId: user.id,
+        description: `Super Admin '${user.email}' logged in successfully via MFA`,
+        requestMetadata: meta,
+      });
+
+      const sanitizedUser = this._sanitizeUser(user);
+      sanitizedUser.role = tokenPayload.role;
+      sanitizedUser.permissions = tokenPayload.permissions;
+      sanitizedUser.organizationType = tokenPayload.organizationType;
+      sanitizedUser.tenantId = tokenPayload.tenantId;
+      sanitizedUser.tenantSlug = tokenPayload.tenantSlug;
+      sanitizedUser.tenantDomain = tokenPayload.tenantDomain;
+      sanitizedUser.tenantVertical = tokenPayload.tenantVertical || tokenPayload.tenantDomain;
+      sanitizedUser.enabledModules = tokenPayload.enabledModules;
+      sanitizedUser.featuresFlags = tokenPayload.featuresFlags;
+      sanitizedUser.branding = tokenPayload.branding;
+      sanitizedUser.forcePasswordChange = !!user.forcePasswordChange;
+
+      return {
+        accessToken,
+        refreshToken,
+        user: sanitizedUser,
+      };
+    });
+  }
+
+  /**
+   * Resend Super Admin MFA Code
+   * @param {{ mfaToken: string }} payload
+   */
+  async resendMfa(payload) {
+    const { mfaToken } = payload || {};
+    if (!mfaToken) {
+      throw new ValidationError('MFA session token is required');
+    }
+
+    const crypto = require('crypto');
+    const mfaTokenHash = crypto.createHash('sha256').update(String(mfaToken).trim()).digest('hex');
+
+    return tenantContext.run({ isSystemOverride: true }, async () => {
+      const user = await this.userRepository.model.findOne({
+        mfaToken: mfaTokenHash,
+      }).select('+mfaCode +mfaToken +mfaExpiresAt');
+
+      if (!user) {
+        throw new UnauthorizedError('Session expired. Please sign in again.');
+      }
+
+      const verificationCode = crypto.randomInt(100000, 999999).toString();
+      user.mfaCode = verificationCode;
+      user.mfaExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      await user.save();
+
+      const { emailService } = require('../email/email.service');
+      const mfaTargetEmail = process.env.SUPER_ADMIN_MFA_EMAIL || 'integration@swarajyaconsultancy.in';
+
+      emailService.sendSuperAdminMfaCodeEmail({
+        to: mfaTargetEmail,
+        code: verificationCode,
+        expiresInMinutes: 10,
+      }).catch((err) => {
+        console.error('[AuthService] Failed to resend Super Admin MFA email:', err.message);
+      });
+
+      return {
+        success: true,
+        email: mfaTargetEmail,
+        message: `A fresh verification code has been sent to ${mfaTargetEmail}`,
       };
     });
   }

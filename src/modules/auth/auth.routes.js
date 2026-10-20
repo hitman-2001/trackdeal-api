@@ -84,6 +84,41 @@ async function authRoutes(fastify, opts) {
     handler: controller.login,
   });
 
+  // POST /auth/mfa/verify
+  fastify.post('/mfa/verify', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Verify Super Admin MFA verification code',
+      security: [],
+      body: {
+        type: 'object',
+        required: ['mfaToken', 'code'],
+        properties: {
+          mfaToken: { type: 'string' },
+          code: { type: 'string', minLength: 6, maxLength: 6 },
+        },
+      },
+    },
+    handler: (req, rep) => controller.verifyMfa(req, rep),
+  });
+
+  // POST /auth/mfa/resend
+  fastify.post('/mfa/resend', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Resend Super Admin MFA verification code to integration@swarajyaconsultancy.in',
+      security: [],
+      body: {
+        type: 'object',
+        required: ['mfaToken'],
+        properties: {
+          mfaToken: { type: 'string' },
+        },
+      },
+    },
+    handler: (req, rep) => controller.resendMfa(req, rep),
+  });
+
   // POST /auth/refresh
   fastify.post('/refresh', {
     schema: {

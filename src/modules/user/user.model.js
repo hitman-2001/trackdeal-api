@@ -100,6 +100,11 @@ const userSchema = new mongoose.Schema(
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },
 
+    // Multi-Factor Authentication (MFA)
+    mfaCode: { type: String, select: false },
+    mfaExpiresAt: { type: Date, select: false },
+    mfaToken: { type: String, select: false },
+
     // Preferences
     preferences: {
       timezone: { type: String, default: 'Asia/Kolkata' },

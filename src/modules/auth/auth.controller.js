@@ -40,6 +40,23 @@ class AuthController extends BaseController {
   }
 
   /**
+   * POST /auth/mfa/verify
+   */
+  async verifyMfa(request, reply) {
+    const meta = { ip: request.ip, userAgent: request.headers['user-agent'] };
+    const result = await this.authService.verifyMfa(request.body, meta);
+    return this.ok(reply, result, 'MFA verification successful');
+  }
+
+  /**
+   * POST /auth/mfa/resend
+   */
+  async resendMfa(request, reply) {
+    const result = await this.authService.resendMfa(request.body);
+    return this.ok(reply, result, 'Verification code resent successfully');
+  }
+
+  /**
    * POST /auth/refresh
    */
   async refresh(request, reply) {
