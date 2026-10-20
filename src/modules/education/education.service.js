@@ -1285,6 +1285,7 @@ class EducationService extends BaseService {
         { mobile: rx },
         { email: rx },
         { parentName: rx },
+        { schoolName: rx },
       ];
       if (filter.$or) {
         filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
@@ -1643,6 +1644,7 @@ class EducationService extends BaseService {
         { mobile: rx },
         { email: rx },
         { parentName: rx },
+        { schoolName: rx },
       ];
     }
     const hasCustomSort = query.sort && query.sort !== "createdAt" && query.sort !== "default";

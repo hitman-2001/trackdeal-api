@@ -55,6 +55,17 @@ class CustomFieldService {
             createdBy: actor.id || null,
             updatedBy: actor.id || null,
           });
+        } else if (existing.key === 'institutionType') {
+          const rawOptions = (item.options || []).map((o) =>
+            typeof o === 'object' ? o.value || o.label : o
+          );
+          const sanitized = sanitizeOptions(rawOptions);
+          const currentVals = (existing.options || []).map((o) => (typeof o === 'object' ? o.value : o)).join(',');
+          const newVals = sanitized.map((o) => o.value).join(',');
+          if (currentVals !== newVals) {
+            existing.options = sanitized;
+            await existing.save();
+          }
         }
       }
     }

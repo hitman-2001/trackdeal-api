@@ -211,7 +211,26 @@ class LeadService extends BaseService {
       );
     }
     if (query.search) {
-      filter.$text = { $search: query.search };
+      const rx = new RegExp(
+        String(query.search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i"
+      );
+      const searchOr = [
+        { firstName: rx },
+        { lastName: rx },
+        { mobile: rx },
+        { email: rx },
+        { parentName: rx },
+        { schoolName: rx },
+      ];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
+        delete filter.$or;
+      } else if (filter.$and) {
+        filter.$and.push({ $or: searchOr });
+      } else {
+        filter.$or = searchOr;
+      }
     }
 
     const page = parseInt(query.page, 10) || 1;
