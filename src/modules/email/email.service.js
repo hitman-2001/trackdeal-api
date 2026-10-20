@@ -260,7 +260,7 @@ ${organizationName} • TrackDeal CRM Operations
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>\${subject}</title>
+  <title>${subject}</title>
   <style>
     body { margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; }
     table { border-collapse: collapse; }
@@ -299,8 +299,8 @@ ${organizationName} • TrackDeal CRM Operations
 
           <div class="otp-card">
             <span class="otp-label">Verification Code</span>
-            <div class="otp-code">\${code}</div>
-            <div style="margin-top: 10px; font-size: 11px; color: #64748b;">Valid for \${expiresInMinutes} minutes</div>
+            <div class="otp-code">${code}</div>
+            <div style="margin-top: 10px; font-size: 11px; color: #64748b;">Valid for ${expiresInMinutes} minutes</div>
           </div>
 
           <div class="security-note">
@@ -310,8 +310,8 @@ ${organizationName} • TrackDeal CRM Operations
       </tr>
       <tr>
         <td class="footer">
-          &copy; \${new Date().getFullYear()} TrackDeal CRM &bull; Automated Security Dispatch.<br>
-          Authorized recipient: \${to}
+          &copy; ${new Date().getFullYear()} TrackDeal CRM &bull; Automated Security Dispatch.<br>
+          Authorized recipient: ${to}
         </td>
       </tr>
     </table>
@@ -328,9 +328,9 @@ Hello Super Administrator,
 A sign-in request was initiated for your TrackDeal Super Administrator account.
 
 Your verification code is:
-\${code}
+${code}
 
-This code will expire in \${expiresInMinutes} minutes.
+This code will expire in ${expiresInMinutes} minutes.
 
 Security Notice: Never share this code with anyone. If you did not initiate this request, please secure your account credentials immediately.
 
