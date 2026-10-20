@@ -61,6 +61,12 @@ class EducationController extends BaseController {
     return this.ok(reply, item, 'Student updated successfully');
   }
 
+  async removeStudentsBulk(request, reply) {
+    const { ids } = request.body || {};
+    const result = await this.educationService.removeStudentsBulk(ids, this.getUser(request));
+    return this.ok(reply, result, `${result.deletedCount} student(s) deleted successfully`);
+  }
+
   async removeStudent(request, reply) {
     await this.educationService.removeStudent(request.params.id, this.getUser(request));
     return this.noContent(reply);

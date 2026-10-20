@@ -88,6 +88,12 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.updateStudent(req, reply),
   });
 
+  fastify.post('/students/bulk-delete', {
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_DELETE)],
+    schema: { tags: ['Education'], summary: 'Bulk delete students' },
+    handler: (req, reply) => controller.removeStudentsBulk(req, reply),
+  });
+
   fastify.delete('/students/:id', {
     preHandler: [requirePermission(PERMISSIONS.STUDENTS_DELETE)],
     schema: { tags: ['Education'], summary: 'Delete student' },

@@ -10,6 +10,7 @@ const {
 } = require("./education.repository");
 const { LeadFollowUpRepository } = require("../lead/lead.repository");
 const {
+  ValidationError,
   BusinessRuleError,
   NotFoundError,
   ForbiddenError,
@@ -745,9 +746,9 @@ class EducationService extends BaseService {
     };
 
     const totalSources =
-      sourcesAgg.reduce((acc, curr) => acc + curr.count, 0) || 1;
+      sourcesAgg.reduce((acc, curr) => acc + curr.count, 0);
     const sourceChartData =
-      sourcesAgg.length > 0
+      totalSources > 0
         ? sourcesAgg.map((s, idx) => {
             const label = formatSource(s._id);
             return {
@@ -757,14 +758,7 @@ class EducationService extends BaseService {
               color: sourceColors[idx % sourceColors.length],
             };
           })
-        : [
-            {
-              label: "Direct Intake",
-              value: totalInquiries,
-              percent: 100,
-              color: "#4f46e5",
-            },
-          ];
+        : [];
 
     // 6. Dynamic Counselor Performance
     const counselorAgg = await this.leadRepository.model.aggregate([
@@ -815,46 +809,41 @@ class EducationService extends BaseService {
               color: barColors[idx % barColors.length],
             };
           })
-        : [
-            {
-              label: "Admissions Desk",
-              value: confirmedConversions,
-              target: Math.max(totalInquiries, 1),
-              color: "#4f46e5",
-            },
-          ];
+        : [];
 
-    // 7. Dynamic Actionable Strategic Insights
-    const topSource = sourceChartData[0]?.label || "Direct Inquiries";
-    const topSourcePercent = sourceChartData[0]?.percent || 0;
-    const dropOffPercent =
-      stage1 > 0 ? Math.round(((stage1 - stage3) / stage1) * 100) : 0;
-
-    const strategicInsights = [
-      {
+    // 7. Dynamic Actionable Strategic Insights (Strictly Derived Data)
+    const strategicInsights = [];
+    if (sourceChartData.length > 0) {
+      const topSource = sourceChartData[0]?.label || "Direct Inquiries";
+      const topSourcePercent = sourceChartData[0]?.percent || 0;
+      strategicInsights.push({
         type: "growth",
         title: `Primary Acquisition Engine: ${topSource}`,
         description: `${topSource} accounts for ${topSourcePercent}% of all inquiries. Investing further in this channel yields the fastest enrollment ROI for your institute.`,
-      },
-      {
+      });
+    }
+    if (stage1 > 0) {
+      const dropOffPercent = Math.round(((stage1 - stage3) / stage1) * 100);
+      strategicInsights.push({
         type: "bottleneck",
         title: `Conversion Funnel Progression`,
         description: `${dropOffPercent}% of inquiries have not yet scheduled a counseling session or demo class. Automated SMS/WhatsApp reminders after registration will reduce this drop-off.`,
-      },
-      {
+      });
+    }
+    if (pipelineInProgress > 0) {
+      strategicInsights.push({
         type: "sla",
         title: `Active Pipeline: ${pipelineInProgress} Inquiries In Progress`,
-        description:
-          pipelineInProgress > 0
-            ? `${pipelineInProgress} student inquiries are currently in active counseling or trial class stages. Following up promptly will maximize enrollment conversions.`
-            : `All current student inquiries have been processed through counseling.`,
-      },
-      {
+        description: `${pipelineInProgress} student inquiries are currently in active counseling or trial class stages. Following up promptly will maximize enrollment conversions.`,
+      });
+    }
+    if (totalClasses > 0 || totalStudents > 0) {
+      strategicInsights.push({
         type: "capacity",
         title: `Active Program Offerings: ${totalClasses} Classes`,
         description: `With ${totalStudents} active students enrolled across ${totalClasses} ongoing batches, the student-to-batch ratio is well balanced.`,
-      },
-    ];
+      });
+    }
 
     return {
       summaryMetrics,
@@ -1486,6 +1475,62 @@ class EducationService extends BaseService {
       module: "Education",
       description: `Archived/deleted student record for "${student.firstName} ${student.lastName || ""}" (${student.mobile})`,
     });
+  }
+
+  async removeStudentsBulk(ids, actor) {
+    this._assertEducation(actor);
+    const {
+      ROLES,
+    } = require("../../shared/constants/roles-permissions.constants");
+    const adminRoles = [
+      ROLES.SUPER_ADMIN,
+      ROLES.ORG_ADMIN,
+      "super_admin",
+      "org_admin",
+      "admin",
+    ];
+    const canDelete =
+      adminRoles.includes(actor?.role) ||
+      (actor?.permissions &&
+        (actor.permissions.includes("students.delete") ||
+          actor.permissions.includes("students.bulk_delete") ||
+          actor.permissions.includes("*")));
+    if (!canDelete) {
+      throw new ForbiddenError(
+        "Only institute administrators can delete student records.",
+      );
+    }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new ValidationError("Student IDs array is required for bulk deletion.");
+    }
+
+    const deletedIds = [];
+    for (const id of ids) {
+      try {
+        const student = await this.studentRepository.findById(id);
+        if (student) {
+          await this.studentRepository.softDelete(id, actor.id);
+          deletedIds.push(id);
+        }
+      } catch (err) {
+        // Continue processing other records
+      }
+    }
+
+    await this.logAudit({
+      actor,
+      action: "education.student.bulk_delete",
+      entity: "Student",
+      entityId: actor.organizationId,
+      module: "Education",
+      description: `Bulk deleted ${deletedIds.length} enrolled student record(s).`,
+      newValues: { count: deletedIds.length, ids: deletedIds },
+    });
+
+    return {
+      deletedCount: deletedIds.length,
+      deletedIds,
+    };
   }
 
   async getLead(id, actor) {

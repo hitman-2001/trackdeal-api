@@ -281,8 +281,8 @@ class ReportingService extends BaseService {
       },
       trendChartData,
       funnelChartData,
-      sourceChartData: sourceChartData.length > 0 ? sourceChartData : [{ label: 'Direct Referral', value: leadCount, percent: 100, color: '#3b82f6' }],
-      counselorPerformanceData: counselorPerformanceData.length > 0 ? counselorPerformanceData : [{ label: 'Senior Broker', value: convertedLeadCount, target: Math.max(leadCount, 1), color: '#10b981' }],
+      sourceChartData,
+      counselorPerformanceData,
       strategicInsights,
       leads: {
         total: leadCount,

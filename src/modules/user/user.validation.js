@@ -18,7 +18,7 @@ const createUserSchema = {
   additionalProperties: true,
   properties: {
     firstName: { type: 'string', minLength: 1, maxLength: 50 },
-    lastName: { type: 'string', minLength: 1, maxLength: 50 },
+    lastName: { type: 'string', maxLength: 50 },
     name: { type: 'string', minLength: 1, maxLength: 100 },
     email: { type: 'string', format: 'email' },
     phone: { type: 'string', pattern: '^[0-9+ -]{5,20}$' },
@@ -47,7 +47,7 @@ const updateUserSchema = {
   additionalProperties: false,
   properties: {
     firstName: { type: 'string', minLength: 2, maxLength: 50 },
-    lastName: { type: 'string', minLength: 2, maxLength: 50 },
+    lastName: { type: 'string', maxLength: 50 },
     phone: { type: 'string', pattern: '^[0-9+ -]{5,20}$' },
     mobile: { type: 'string', pattern: '^[0-9+ -]{5,20}$' },
     employeeCode: { type: 'string', maxLength: 50 },
@@ -123,7 +123,7 @@ const inviteUserSchema = {
     branchId: { type: 'string', pattern: '^[0-9a-fA-F]{24}$', nullable: true },
     password: { type: 'string', minLength: 6, maxLength: 100 },
     firstName: { type: 'string', minLength: 1, maxLength: 50 },
-    lastName: { type: 'string', minLength: 1, maxLength: 50 },
+    lastName: { type: 'string', maxLength: 50 },
     name: { type: 'string', minLength: 1, maxLength: 100 },
   },
 };
@@ -161,7 +161,7 @@ const updateProfileSchema = {
   additionalProperties: false,
   properties: {
     firstName: { type: 'string', minLength: 2, maxLength: 50 },
-    lastName: { type: 'string', minLength: 2, maxLength: 50 },
+    lastName: { type: 'string', maxLength: 50 },
     phone: { type: 'string', pattern: '^[0-9+ -]{5,20}$' },
     mobile: { type: 'string', pattern: '^[0-9+ -]{5,20}$' },
     preferences: {
