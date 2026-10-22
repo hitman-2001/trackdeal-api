@@ -19,8 +19,10 @@ class EmailService {
     this.secure = options.secure ?? (this.port === 465);
     this.user = options.user || process.env.SMTP_USER || '';
     this.pass = options.pass || process.env.SMTP_PASS || '';
-    this.from = options.from || process.env.SMTP_FROM || process.env.EMAIL_FROM || 'TrackDeal CRM <contact@trackdeal.in>';
+    this.from = options.from || process.env.SMTP_FROM || process.env.EMAIL_FROM || '"TrackDeal CRM" <contact@trackdeal.in>';
+    this.replyTo = options.replyTo || process.env.SMTP_REPLY_TO || 'contact@trackdeal.in';
     this.appUrl = options.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || 'https://trackdeal.in';
+    this.transporter = null;
   }
 
   /**
@@ -28,7 +30,7 @@ class EmailService {
    * If nodemailer is present and credentials configured, dispatches real email;
    * otherwise logs email details in development/simulation mode.
    */
-  async sendEmail({ to, subject, html, text }) {
+  async sendEmail({ to, subject, html, text, priority = 'normal', headers = {} }) {
     if (!to) {
       throw new Error('Email recipient "to" address is required.');
     }
@@ -43,23 +45,45 @@ class EmailService {
 
     if (nodemailer && this.user && this.pass) {
       try {
-        const transporter = nodemailer.createTransport({
-          host: this.host,
-          port: this.port,
-          secure: this.secure,
-          auth: {
-            user: this.user,
-            pass: this.pass,
-          },
-        });
+        if (!this.transporter) {
+          this.transporter = nodemailer.createTransport({
+            host: this.host,
+            port: this.port,
+            secure: this.secure,
+            auth: {
+              user: this.user,
+              pass: this.pass,
+            },
+          });
+        }
 
-        const info = await transporter.sendMail({
+        const domain = 'trackdeal.in';
+        const uniqueId = `${Date.now()}.${Math.random().toString(36).substring(2, 10)}`;
+        const messageId = `<${uniqueId}@${domain}>`;
+
+        const mailOptions = {
           from: this.from,
           to,
+          replyTo: this.replyTo,
           subject,
           text: text || '',
           html,
-        });
+          messageId,
+          headers: {
+            'X-Mailer': 'TrackDeal CRM System',
+            'X-Auto-Response-Suppress': 'All',
+            'Auto-Submitted': 'auto-generated',
+            ...headers,
+          },
+        };
+
+        if (priority === 'high') {
+          mailOptions.priority = 'high';
+          mailOptions.headers['X-Priority'] = '1';
+          mailOptions.headers['Importance'] = 'high';
+        }
+
+        const info = await this.transporter.sendMail(mailOptions);
 
         return { success: true, messageId: info.messageId, mode: 'smtp' };
       } catch (err) {
@@ -252,7 +276,7 @@ ${organizationName} • TrackDeal CRM Operations
       throw new Error('Recipient email is required for MFA code.');
     }
 
-    const subject = `TrackDeal Security: Super Admin Verification Code (${code})`;
+    const subject = `TrackDeal Verification Code: ${code}`;
 
     const html = `
 <!DOCTYPE html>
@@ -342,6 +366,7 @@ TrackDeal Security Team
       subject,
       html,
       text,
+      priority: 'high',
     });
   }
 
