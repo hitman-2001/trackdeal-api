@@ -314,7 +314,8 @@ const distributeBatchRoundRobinSchema = {
       type: "array",
       items: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
     },
-    batchSize: { type: "integer", minimum: 1, maximum: 500 },
+    mode: { type: "string", enum: ["equal", "round_robin"] },
+    batchSize: { type: "integer", minimum: 1, maximum: 5000 },
     reason: { type: "string", maxLength: 200 },
   },
 };

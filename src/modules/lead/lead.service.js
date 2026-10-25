@@ -1043,7 +1043,7 @@ class LeadService extends BaseService {
    * Distribute leads in fixed batches using round-robin across staff members.
    * Default batchSize is 10 (e.g. 1st 10 -> Staff 1, 2nd 10 -> Staff 2, and repeats).
    */
-  async distributeLeadsBatchRoundRobin({ leadIds, staffIds, batchSize = 10, reason }, actor) {
+  async distributeLeadsBatchRoundRobin({ leadIds, staffIds, mode = "round_robin", batchSize = 10, reason }, actor) {
     const adminRoles = ["super_admin", "org_admin", "admin"];
     const canAssign =
       adminRoles.includes(actor?.role) ||
@@ -1100,18 +1100,42 @@ class LeadService extends BaseService {
       staffInfoMap.set(mid, member);
     }
 
-    // Fixed-Batch Round-Robin Assignment
-    // e.g. leads 0..9 -> Staff 0, leads 10..19 -> Staff 1, leads 20..29 -> Staff 0 (if 2 staff)
-    for (let i = 0; i < leadIds.length; i++) {
-      const batchIdx = Math.floor(i / effectiveBatchSize);
-      const staffIdx = batchIdx % staffCount;
-      const targetMember = targetStaffMembers[staffIdx];
-      const memberId = String(targetMember._id || targetMember.id);
-      assignmentMap.get(memberId).push(leadIds[i]);
+    // Assignment strategy based on mode:
+    // 1. Equal Split mode: Divide leads evenly (N / M). If remainder R exists, first R staff get base + 1 leads.
+    // 2. Fixed-Batch Round-Robin mode: Leads are assigned in batches of batchSize sequentially across staff.
+    if (mode === "equal") {
+      const totalLeads = leadIds.length;
+      const baseCount = Math.floor(totalLeads / staffCount);
+      const remainder = totalLeads % staffCount;
+      let currentIndex = 0;
+
+      for (let s = 0; s < staffCount; s++) {
+        const staffObj = targetStaffMembers[s];
+        const memberId = String(staffObj._id || staffObj.id);
+        const countForThisStaff = s < remainder ? baseCount + 1 : baseCount;
+        const leadsForThisStaff = leadIds.slice(currentIndex, currentIndex + countForThisStaff);
+        assignmentMap.set(memberId, leadsForThisStaff);
+        currentIndex += countForThisStaff;
+      }
+    } else {
+      // Fixed-Batch Round-Robin Assignment
+      // e.g. leads 0..9 -> Staff 0, leads 10..19 -> Staff 1, leads 20..29 -> Staff 0 (if 2 staff)
+      for (let i = 0; i < leadIds.length; i++) {
+        const batchIdx = Math.floor(i / effectiveBatchSize);
+        const staffIdx = batchIdx % staffCount;
+        const targetMember = targetStaffMembers[staffIdx];
+        const memberId = String(targetMember._id || targetMember.id);
+        assignmentMap.get(memberId).push(leadIds[i]);
+      }
     }
 
     const distributionSummary = [];
     const updatedLeadList = [];
+
+    const defaultReason =
+      mode === "equal"
+        ? `Equal Distribution (${leadIds.length} leads across ${staffCount} staff)`
+        : `Batch Round-Robin Distribution (Batch of ${effectiveBatchSize})`;
 
     for (const [staffId, assignedBatchIds] of assignmentMap.entries()) {
       if (assignedBatchIds.length === 0) continue;
@@ -1125,7 +1149,7 @@ class LeadService extends BaseService {
           leadId,
           staffId,
           actor,
-          reason || `Batch Round-Robin Distribution (Batch of ${effectiveBatchSize})`
+          reason || defaultReason
         );
         updatedLeadList.push(updated);
       }
@@ -1139,9 +1163,10 @@ class LeadService extends BaseService {
     }
 
     return {
+      mode: mode || "round_robin",
       totalLeads: leadIds.length,
-      batchSize: effectiveBatchSize,
-      batchesCount: Math.ceil(leadIds.length / effectiveBatchSize),
+      batchSize: mode === "equal" ? null : effectiveBatchSize,
+      batchesCount: mode === "equal" ? null : Math.ceil(leadIds.length / effectiveBatchSize),
       staffCount: distributionSummary.length,
       distribution: distributionSummary,
     };

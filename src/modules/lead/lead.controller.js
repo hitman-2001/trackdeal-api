@@ -87,15 +87,20 @@ class LeadController extends BaseController {
       {
         leadIds: request.body.leadIds,
         staffIds: request.body.staffIds,
+        mode: request.body.mode,
         batchSize: request.body.batchSize,
         reason: request.body.reason,
       },
       this.getUser(request)
     );
+    const message =
+      result.mode === "equal"
+        ? `Leads distributed equally among ${result.staffCount} staff members`
+        : `Leads distributed successfully in fixed batches of ${result.batchSize}`;
     return this.ok(
       reply,
       result,
-      `Leads distributed successfully in fixed batches of ${result.batchSize}`
+      message
     );
   }
 

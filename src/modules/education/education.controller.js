@@ -108,10 +108,14 @@ class EducationController extends BaseController {
       request.body,
       this.getUser(request)
     );
+    const message =
+      result.mode === "equal"
+        ? `Student leads distributed equally among ${result.staffCount} staff members`
+        : `Student leads distributed successfully in fixed batches of ${result.batchSize}`;
     return this.ok(
       reply,
       result,
-      `Student leads distributed successfully in fixed batches of ${result.batchSize}`
+      message
     );
   }
 }
