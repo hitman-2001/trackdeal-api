@@ -462,7 +462,8 @@ TrackDeal Security Team
       totalDueToday += m.todayTasks.length;
     });
 
-    const resolvedDashboardUrl = dashboardUrl || `${this.appUrl}/education/leads`;
+    const cleanBaseUrl = (this.appUrl || 'https://trackdeal.in').replace(/\/+$/, '');
+    const resolvedDashboardUrl = dashboardUrl || `${cleanBaseUrl}/app/dashboard`;
     const subject = `${organizationName} Daily Operations Digest: ${formattedDate} (${totalOverdue} Overdue, ${totalCompleted} Done)`;
 
     // Build staff sections HTML

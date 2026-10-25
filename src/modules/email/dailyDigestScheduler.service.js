@@ -388,7 +388,7 @@ class DailyDigestSchedulerService {
         date: now,
         staffMembers: staffSummaryList,
         staffMembersWithTasks: staffSummaryList,
-        dashboardUrl: `${process.env.FRONTEND_URL || 'https://trackdeal.in'}/education/leads`,
+        dashboardUrl: `${(process.env.FRONTEND_URL || 'https://trackdeal.in').replace(/\/+$/, '')}/app/dashboard`,
         isEducation: org.vertical === 'education',
         vertical: org.vertical || 'education',
       });
