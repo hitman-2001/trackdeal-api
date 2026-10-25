@@ -120,7 +120,11 @@ class CustomFieldService {
       throw new BusinessRuleError(`A field with key "${key}" already exists for ${module}`);
     }
 
+    const allowedTypes = ['text', 'select', 'number', 'phone', 'email', 'textarea', 'date'];
     const type = data.type || 'text';
+    if (!allowedTypes.includes(type)) {
+      throw new BusinessRuleError(`Invalid field type "${type}". Allowed types: ${allowedTypes.join(', ')}`);
+    }
     let options = [];
     if (type === 'select') {
       if (Array.isArray(data.options)) {
@@ -184,6 +188,10 @@ class CustomFieldService {
     }
 
     if (data.type !== undefined && !field.isSystemLocked) {
+      const allowedTypes = ['text', 'select', 'number', 'phone', 'email', 'textarea', 'date'];
+      if (!allowedTypes.includes(data.type)) {
+        throw new BusinessRuleError(`Invalid field type "${data.type}". Allowed types: ${allowedTypes.join(', ')}`);
+      }
       field.type = data.type;
     }
 

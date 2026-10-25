@@ -36,7 +36,7 @@ const customFieldSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['text', 'select', 'number', 'textarea', 'date'],
+      enum: ['text', 'select', 'number', 'phone', 'email', 'textarea', 'date'],
       default: 'text',
       required: true,
     },

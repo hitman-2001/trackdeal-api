@@ -118,6 +118,15 @@ class EducationController extends BaseController {
       message
     );
   }
+
+  async checkDuplicates(request, reply) {
+    const isStudents = request.url?.includes('/students/');
+    const result = await this.educationService.checkDuplicates(
+      { ...request.body, target: isStudents ? 'students' : 'leads' },
+      this.getUser(request)
+    );
+    return this.ok(reply, result);
+  }
 }
 
 module.exports = { EducationController };

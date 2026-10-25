@@ -455,6 +455,26 @@ class LeadService extends BaseService {
       }
     }
 
+    // Duplicate phone check within organization
+    if (data.mobile) {
+      const cleanMobile = String(data.mobile).replace(/[^0-9]/g, '');
+      const suffix10 = cleanMobile.slice(-10);
+      const existingLead = await this.leadRepository.findOne({
+        organizationId: actor.organizationId,
+        isDeleted: { $ne: true },
+        $or: [
+          { mobile: data.mobile },
+          { mobile: cleanMobile },
+          ...(suffix10 ? [{ mobile: { $regex: new RegExp(suffix10 + '$', 'i') } }] : []),
+        ],
+      });
+      if (existingLead) {
+        throw new ConflictError(
+          `Lead with phone number ${data.mobile} already exists (${existingLead.firstName} ${existingLead.lastName || ''}). Duplicate leads are not allowed.`
+        );
+      }
+    }
+
     const initialStatus =
       data.status ||
       (assigneeId && assigneeId.toString() !== actor.id.toString()

@@ -141,6 +141,18 @@ async function educationRoutes(fastify) {
     schema: { tags: ['Education'], summary: 'Distribute student leads in fixed batches using round-robin' },
     handler: (req, reply) => controller.distributeBatchRoundRobin(req, reply),
   });
+
+  fastify.post('/leads/check-duplicates', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    schema: { tags: ['Education'], summary: 'Check for duplicate lead mobile numbers' },
+    handler: (req, reply) => controller.checkDuplicates(req, reply),
+  });
+
+  fastify.post('/students/check-duplicates', {
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_READ)],
+    schema: { tags: ['Education'], summary: 'Check for duplicate student mobile numbers' },
+    handler: (req, reply) => controller.checkDuplicates(req, reply),
+  });
 }
 
 module.exports = educationRoutes;

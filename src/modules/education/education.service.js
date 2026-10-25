@@ -14,6 +14,7 @@ const {
   BusinessRuleError,
   NotFoundError,
   ForbiddenError,
+  ConflictError,
 } = require("../../shared/errors");
 const { isEducationVertical } = require("../tenant/tenant.constants");
 
@@ -1352,6 +1353,24 @@ class EducationService extends BaseService {
       throw new BusinessRuleError(
         "Student first name and mobile are required.",
       );
+    // Strict duplicate check against existing students for this organization
+    const cleanMobile = mobile.replace(/[^0-9]/g, '');
+    const suffix10 = cleanMobile.slice(-10);
+    const existingStudent = await this.studentRepository.findOne({
+      organizationId: actor.organizationId,
+      isDeleted: { $ne: true },
+      $or: [
+        { mobile: mobile },
+        { mobile: cleanMobile },
+        ...(suffix10 ? [{ mobile: { $regex: new RegExp(suffix10 + '$', 'i') } }] : []),
+      ],
+    });
+    if (existingStudent) {
+      throw new ConflictError(
+        `A student with phone number ${mobile} already exists (${existingStudent.firstName} ${existingStudent.lastName || ''}). Duplicate records are not allowed.`
+      );
+    }
+
     if (data.classId) {
       await this.classRepository.findByIdOrFail(data.classId, "Class");
     }
@@ -1692,6 +1711,24 @@ class EducationService extends BaseService {
     if (!schoolName) {
       throw new BusinessRuleError(
         "School name is required.",
+      );
+    }
+
+    // Strict duplicate check against existing leads for this organization
+    const cleanMobile = mobile.replace(/[^0-9]/g, '');
+    const suffix10 = cleanMobile.slice(-10);
+    const existingLead = await this.leadRepository.findOne({
+      organizationId: actor.organizationId,
+      isDeleted: { $ne: true },
+      $or: [
+        { mobile: mobile },
+        { mobile: cleanMobile },
+        ...(suffix10 ? [{ mobile: { $regex: new RegExp(suffix10 + '$', 'i') } }] : []),
+      ],
+    });
+    if (existingLead) {
+      throw new ConflictError(
+        `Lead with phone number ${mobile} already exists (${existingLead.firstName} ${existingLead.lastName || ''}). Duplicate leads are not allowed.`
       );
     }
     const {
@@ -2172,6 +2209,59 @@ class EducationService extends BaseService {
     const { LeadService } = require("../lead/lead.service");
     const leadService = new LeadService();
     return leadService.distributeLeadsBatchRoundRobin(data, actor);
+  }
+
+  /**
+   * Batch check for duplicate mobile numbers in TrackDeal.
+   */
+  async checkDuplicates(data, actor) {
+    this._assertEducation(actor);
+    const rawMobiles = Array.isArray(data?.mobiles) ? data.mobiles : [];
+    const cleaned = rawMobiles
+      .map((m) => String(m || '').trim().replace(/[^0-9]/g, ''))
+      .filter((m) => m.length >= 7);
+
+    if (cleaned.length === 0) {
+      return { duplicates: [] };
+    }
+
+    const suffixes = Array.from(new Set(cleaned.map((m) => m.slice(-10)).filter(Boolean)));
+    const searchMobiles = Array.from(new Set([...cleaned, ...suffixes]));
+
+    const target = data?.target === 'students' ? 'students' : 'leads';
+    let records = [];
+
+    const orConditions = [
+      { mobile: { $in: searchMobiles } },
+      ...suffixes.map((s) => ({ mobile: { $regex: new RegExp(s + '$', 'i') } })),
+    ];
+
+    if (target === 'students') {
+      records = await this.studentRepository.find(
+        {
+          organizationId: actor.organizationId,
+          isDeleted: { $ne: true },
+          $or: orConditions,
+        },
+        { select: 'firstName lastName mobile' }
+      );
+    } else {
+      records = await this.leadRepository.find(
+        {
+          organizationId: actor.organizationId,
+          isDeleted: { $ne: true },
+          $or: orConditions,
+        },
+        { select: 'firstName lastName mobile' }
+      );
+    }
+
+    const duplicates = (records || []).map((r) => ({
+      mobile: r.mobile,
+      name: (r.firstName + ' ' + (r.lastName || '')).trim() || 'Existing Record',
+    }));
+
+    return { duplicates };
   }
 }
 
