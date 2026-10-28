@@ -316,6 +316,11 @@ leadSchema.index({ organizationId: 1, branchId: 1, status: 1 });
 leadSchema.index({ organizationId: 1, source: 1, createdAt: -1 });
 leadSchema.index({ organizationId: 1, score: -1 });
 leadSchema.index({ organizationId: 1, tags: 1 });
+leadSchema.index({ organizationId: 1, tenantVertical: 1, isDeleted: 1, status: 1 });
+leadSchema.index({ organizationId: 1, tenantVertical: 1, isDeleted: 1, nextFollowUpAt: 1 });
+leadSchema.index({ organizationId: 1, tenantVertical: 1, assignedTo: 1, isDeleted: 1 });
+leadSchema.index({ organizationId: 1, tenantVertical: 1, createdAt: -1 });
+leadSchema.index({ organizationId: 1, isDeleted: 1, status: 1 });
 leadSchema.index({ organizationId: 1, standard: 1 });
 leadSchema.index({ organizationId: 1, educationBoard: 1 });
 leadSchema.index({ organizationId: 1, institutionType: 1 });
@@ -519,6 +524,7 @@ const leadFollowUpSchema = new mongoose.Schema(
 leadFollowUpSchema.index({ organizationId: 1, leadId: 1, scheduledAt: 1 });
 leadFollowUpSchema.index({ organizationId: 1, assignedTo: 1, scheduledAt: 1, status: 1 });
 leadFollowUpSchema.index({ organizationId: 1, status: 1, scheduledAt: 1 });
+leadFollowUpSchema.index({ organizationId: 1, isDeleted: 1, status: 1, scheduledAt: 1 });
 leadFollowUpSchema.index({ status: 1, reminder10MinSent: 1, scheduledAt: 1 });
 
 const LeadFollowUp = mongoose.model("LeadFollowUp", leadFollowUpSchema, "lead_followups");

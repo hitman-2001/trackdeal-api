@@ -159,9 +159,13 @@ class EducationService extends BaseService {
       }
     }
 
-    // 2. Fetch scheduled follow-ups & reminders
+    // 2. Fetch scheduled follow-ups & reminders (database-level actor scoping)
+    const followUpFilter = { isDeleted: { $ne: true }, status: "scheduled" };
+    if (!isAdmin && actorObjectId) {
+      followUpFilter.assignedTo = actorObjectId;
+    }
     const rawFollowUps = await this.followUpRepository.findMany(
-      { isDeleted: { $ne: true }, status: "scheduled" },
+      followUpFilter,
       {
         sort: { scheduledAt: 1 },
         limit: 50,
@@ -180,18 +184,22 @@ class EducationService extends BaseService {
       },
     );
 
+    const leadFollowUpFilter = {
+      isDeleted: { $ne: true },
+      $or: [
+        { tenantVertical: "education" },
+        { tenantVertical: { $exists: false } },
+        { tenantVertical: null },
+        { tenantVertical: "" },
+      ],
+      status: { $nin: ["closed_won", "closed_lost", "lost", "junk", "enrolled"] },
+      nextFollowUpAt: { $ne: null, $exists: true },
+    };
+    if (!isAdmin && actorObjectId) {
+      leadFollowUpFilter.assignedTo = actorObjectId;
+    }
     const leadsWithFollowUp = await this.leadRepository.findMany(
-      {
-        isDeleted: { $ne: true },
-        $or: [
-          { tenantVertical: "education" },
-          { tenantVertical: { $exists: false } },
-          { tenantVertical: null },
-          { tenantVertical: "" },
-        ],
-        status: { $nin: ["closed_won", "closed_lost", "lost", "junk", "enrolled"] },
-        nextFollowUpAt: { $ne: null, $exists: true },
-      },
+      leadFollowUpFilter,
       {
         sort: { nextFollowUpAt: 1 },
         limit: 50,
@@ -618,22 +626,65 @@ class EducationService extends BaseService {
       1,
     );
 
-    const trendAgg = await this.leadRepository.model.aggregate([
-      { $match: { ...baseMatch, createdAt: { $gte: trendStartDate } } },
-      {
-        $group: {
-          _id: {
-            year: { $year: "$createdAt" },
-            month: { $month: "$createdAt" },
-          },
-          count: { $sum: 1 },
-          converted: {
-            $sum: {
-              $cond: [{ $in: ["$status", ["enrolled", "converted"]] }, 1, 0],
+    // Parallel aggregate execution for light-speed query resolution
+    const [trendAgg, stageAgg, sourcesAgg, counselorAgg] = await Promise.all([
+      this.leadRepository.model.aggregate([
+        { $match: { ...baseMatch, createdAt: { $gte: trendStartDate } } },
+        {
+          $group: {
+            _id: {
+              year: { $year: "$createdAt" },
+              month: { $month: "$createdAt" },
+            },
+            count: { $sum: 1 },
+            converted: {
+              $sum: {
+                $cond: [{ $in: ["$status", ["enrolled", "converted"]] }, 1, 0],
+              },
             },
           },
         },
-      },
+      ]),
+      this.leadRepository.model.aggregate([
+        { $match: rangeMatch },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      this.leadRepository.model.aggregate([
+        { $match: rangeMatch },
+        {
+          $group: {
+            _id: { $ifNull: ["$source", "direct"] },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+      this.leadRepository.model.aggregate([
+        { $match: { ...rangeMatch, assignedTo: { $ne: null } } },
+        {
+          $group: {
+            _id: "$assignedTo",
+            totalAssigned: { $sum: 1 },
+            converted: {
+              $sum: {
+                $cond: [{ $in: ["$status", ["enrolled", "converted"]] }, 1, 0],
+              },
+            },
+          },
+        },
+        { $sort: { converted: -1, totalAssigned: -1 } },
+        { $limit: 6 },
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "userInfo",
+          },
+        },
+        { $unwind: { path: "$userInfo", preserveNullAndEmptyArrays: true } },
+      ]),
     ]);
 
     for (const r of trendAgg) {
@@ -653,10 +704,6 @@ class EducationService extends BaseService {
     }));
 
     // 4. Dynamic Conversion Funnel
-    const stageAgg = await this.leadRepository.model.aggregate([
-      { $match: rangeMatch },
-      { $group: { _id: "$status", count: { $sum: 1 } } },
-    ]);
     const stageMap = {};
     for (const s of stageAgg) {
       if (s._id) stageMap[String(s._id).toLowerCase()] = s.count;
@@ -694,18 +741,6 @@ class EducationService extends BaseService {
     ];
 
     // 5. Dynamic Lead Source Breakdown
-    const sourcesAgg = await this.leadRepository.model.aggregate([
-      { $match: rangeMatch },
-      {
-        $group: {
-          _id: { $ifNull: ["$source", "direct"] },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
-    ]);
-
     const sourceColors = [
       "#4f46e5",
       "#0284c7",
@@ -762,32 +797,6 @@ class EducationService extends BaseService {
         : [];
 
     // 6. Dynamic Counselor Performance
-    const counselorAgg = await this.leadRepository.model.aggregate([
-      { $match: { ...rangeMatch, assignedTo: { $ne: null } } },
-      {
-        $group: {
-          _id: "$assignedTo",
-          totalAssigned: { $sum: 1 },
-          converted: {
-            $sum: {
-              $cond: [{ $in: ["$status", ["enrolled", "converted"]] }, 1, 0],
-            },
-          },
-        },
-      },
-      { $sort: { converted: -1, totalAssigned: -1 } },
-      { $limit: 6 },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "userInfo",
-        },
-      },
-      { $unwind: { path: "$userInfo", preserveNullAndEmptyArrays: true } },
-    ]);
-
     const barColors = [
       "#4f46e5",
       "#4f46e5",
@@ -869,99 +878,99 @@ class EducationService extends BaseService {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    // 1. Fetch recent team activities (calls, chats, notes, meetings, status changes)
-    const recentActivities = await LeadActivity.find({
-      organizationId: orgObjectId,
-      isDeleted: false,
-    })
-      .sort({ createdAt: -1 })
-      .limit(30)
-      .populate("leadId", "firstName lastName parentName mobile status classInterestId tenantVertical")
-      .populate("performedBy", "firstName lastName email designation")
-      .lean();
+    // Concurrent execution of activities, notes, and team statistics
+    const [recentActivities, recentNotes, teamStatsAgg] = await Promise.all([
+      LeadActivity.find({
+        organizationId: orgObjectId,
+        isDeleted: false,
+      })
+        .sort({ createdAt: -1 })
+        .limit(30)
+        .populate("leadId", "firstName lastName parentName mobile status classInterestId tenantVertical")
+        .populate("performedBy", "firstName lastName email designation")
+        .lean(),
 
-    // 2. Fetch recent notes / comments on leads
-    const recentNotes = await LeadNote.find({
-      organizationId: orgObjectId,
-    })
-      .sort({ createdAt: -1 })
-      .limit(15)
-      .populate("leadId", "firstName lastName parentName mobile status")
-      .populate("createdBy", "firstName lastName email designation")
-      .lean();
+      LeadNote.find({
+        organizationId: orgObjectId,
+      })
+        .sort({ createdAt: -1 })
+        .limit(15)
+        .populate("leadId", "firstName lastName parentName mobile status")
+        .populate("createdBy", "firstName lastName email designation")
+        .lean(),
 
-    // 3. Team Member / Counselor Performance Overview
-    const teamStatsAgg = await this.leadRepository.model.aggregate([
-      {
-        $match: {
-          $or: [{ organizationId: orgObjectId }, { organizationId: orgId }],
-          isDeleted: false,
-          tenantVertical: "education",
-          assignedTo: { $ne: null },
+      this.leadRepository.model.aggregate([
+        {
+          $match: {
+            $or: [{ organizationId: orgObjectId }, { organizationId: orgId }],
+            isDeleted: false,
+            tenantVertical: "education",
+            assignedTo: { $ne: null },
+          },
         },
-      },
-      {
-        $group: {
-          _id: "$assignedTo",
-          totalAssigned: { $sum: 1 },
-          contacted: {
-            $sum: {
-              $cond: [
-                {
-                  $in: [
-                    "$status",
-                    [
-                      "contacted",
-                      "follow_up",
-                      "meeting_scheduled",
-                      "counseling_scheduled",
-                      "qualified",
-                      "application_trial",
-                      "enrolled",
-                      "converted",
+        {
+          $group: {
+            _id: "$assignedTo",
+            totalAssigned: { $sum: 1 },
+            contacted: {
+              $sum: {
+                $cond: [
+                  {
+                    $in: [
+                      "$status",
+                      [
+                        "contacted",
+                        "follow_up",
+                        "meeting_scheduled",
+                        "counseling_scheduled",
+                        "qualified",
+                        "application_trial",
+                        "enrolled",
+                        "converted",
+                      ],
                     ],
-                  ],
-                },
-                1,
-                0,
-              ],
+                  },
+                  1,
+                  0,
+                ],
+              },
             },
-          },
-          inCounseling: {
-            $sum: {
-              $cond: [
-                {
-                  $in: [
-                    "$status",
-                    [
-                      "meeting_scheduled",
-                      "counseling_scheduled",
-                      "qualified",
-                      "application_trial",
+            inCounseling: {
+              $sum: {
+                $cond: [
+                  {
+                    $in: [
+                      "$status",
+                      [
+                        "meeting_scheduled",
+                        "counseling_scheduled",
+                        "qualified",
+                        "application_trial",
+                      ],
                     ],
-                  ],
-                },
-                1,
-                0,
-              ],
+                  },
+                  1,
+                  0,
+                ],
+              },
             },
-          },
-          enrolled: {
-            $sum: {
-              $cond: [{ $in: ["$status", ["enrolled", "converted"]] }, 1, 0],
+            enrolled: {
+              $sum: {
+                $cond: [{ $in: ["$status", ["enrolled", "converted"]] }, 1, 0],
+              },
             },
           },
         },
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "user",
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "user",
+          },
         },
-      },
-      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+        { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+      ]),
     ]);
 
     const teamMembers = teamStatsAgg.map((item) => {

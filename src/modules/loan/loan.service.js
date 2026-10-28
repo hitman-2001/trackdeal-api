@@ -253,7 +253,10 @@ class LoanService extends BaseService {
    */
   async getLoanSummary(query = {}, actor) {
     const orgId = actor.organizationId;
-    const allCases = await this.loanCaseRepo.model.find({ organizationId: orgId, isDeleted: false }).lean();
+    const allCases = await this.loanCaseRepo.model
+      .find({ organizationId: orgId, isDeleted: false })
+      .select("stage sanctionedAmount sanctionDetails.sanctionedAmount disbursedAmount disbursements commissionTerms.expectedAmount")
+      .lean();
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);

@@ -117,6 +117,13 @@ class RedisCache {
         /* fall through */
       }
     }
+    // Periodic pruning to avoid in-process memory leak when Redis is inactive
+    if (this._mem.size > 500) {
+      const now = Date.now();
+      for (const [k, v] of this._mem.entries()) {
+        if (now > v.expiresAt) this._mem.delete(k);
+      }
+    }
     this._mem.set(fullKey, { value, expiresAt: Date.now() + this._ttl * 1000 });
   }
 
@@ -134,13 +141,17 @@ class RedisCache {
 
   /**
    * Invalidate all keys matching a pattern — use Redis SCAN to avoid KEYS.
-   * Falls back to clearing the entire in-process Map.
-   * @param {string} pattern  e.g. 'analytics:org:abc:*'
+   * Wildcards across domains (e.g. analytics:*:org:abc:*) to purge multi-domain entries.
+   * Falls back to clearing matching or all keys in the in-process Map.
+   * @param {string} pattern  e.g. 'org:abc:*'
    */
   async clearPattern(pattern) {
     if (this._redis && this._redis.status === "ready") {
       try {
-        const fullPattern = this._fullKey(pattern);
+        // Guarantee wildcard matching regardless of domain prefixes (sales, exec, lead, etc.)
+        const fullPattern = pattern.startsWith("*")
+          ? `${this._prefix}:${pattern}`
+          : `${this._prefix}:*${pattern}`;
         let cursor = "0";
         do {
           const [nextCursor, keys] = await this._redis.scan(
@@ -158,8 +169,17 @@ class RedisCache {
         /* fall through */
       }
     }
-    // Fallback: clear the entire local map (safe for single-instance dev)
-    this._mem.clear();
+    // In-process fallback: delete matching pattern keys safely
+    const cleanPattern = pattern.replace(/\*/g, "");
+    if (!cleanPattern) {
+      this._mem.clear();
+    } else {
+      for (const k of this._mem.keys()) {
+        if (k.includes(cleanPattern)) {
+          this._mem.delete(k);
+        }
+      }
+    }
   }
 }
 
@@ -272,6 +292,11 @@ class AnalyticsService extends BaseService {
       deps.commissionMonthlyRepo || new CommissionMonthlySummaryRepository();
     this.agentPerformanceRepo =
       deps.agentPerformanceRepo || new AgentPerformanceSummaryRepository();
+  }
+
+  async clearCacheForOrg(organizationId) {
+    if (!organizationId) return;
+    await _cache.clearPattern(`org:${organizationId}:*`);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -677,6 +702,7 @@ class AnalyticsService extends BaseService {
       activePropsCount,
       allDeals,
       allCommissions,
+      topUpcomingCommissions,
       allTasks,
       allLeadFollowUps,
       allLeadsWithFollowUp,
@@ -687,8 +713,21 @@ class AnalyticsService extends BaseService {
       Lead.countDocuments({ ...leadFilter, temperature: { $in: ["hot", "Hot", "HOT"] }, status: { $nin: ["closed_won", "closed_lost", "lost"] } }),
       Lead.find(leadFilter).select("status temperature source budgetMin budgetMax requirements createdAt").lean(),
       Property.countDocuments({ ...propFilter, status: { $in: ["available", "Available"] } }),
-      Deal.find(dealFilter).populate("customer", "firstName lastName name").populate("project", "name").lean(),
-      Commission.find(commFilter).populate("customerId", "firstName lastName name").populate("projectId", "name").populate("propertyId", "title").lean(),
+      Deal.find(dealFilter).select("agreedPrice dealValue askingPrice status closedAt updatedAt").lean(),
+      Commission.find(commFilter).select("totalCommissionExpected payments expectedPaymentDate").lean(),
+      Commission.find({
+        ...commFilter,
+        $or: [
+          { totalCommissionOutstanding: { $gt: 0 } },
+          { paymentStatus: { $in: ["unpaid", "partially_paid"] } },
+        ],
+      })
+        .sort({ expectedPaymentDate: 1 })
+        .limit(5)
+        .populate("customerId", "firstName lastName name")
+        .populate("projectId", "name")
+        .populate("propertyId", "title")
+        .lean(),
       Task.find({ ...taskFilter, status: { $ne: "completed" } }).populate("leadId", "firstName lastName name mobile").sort({ dueDate: 1 }).limit(20).lean(),
       LeadFollowUp.find(followUpFilter).populate("leadId", "firstName lastName name mobile email status").populate("assignedTo", "firstName lastName name").sort({ scheduledAt: 1 }).limit(30).lean(),
       Lead.find({
@@ -729,8 +768,6 @@ class AnalyticsService extends BaseService {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    const upcomingCollections = [];
-
     for (const comm of allCommissions) {
       const expected = Number(comm.totalCommissionExpected) || 0;
       const collected = (comm.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -747,20 +784,26 @@ class AnalyticsService extends BaseService {
       if (dueDate && dueDate >= startOfMonth && dueDate <= endOfMonth && outstanding > 0) {
         expectedThisMonth += outstanding;
       }
-
-      if (outstanding > 0) {
-        upcomingCollections.push({
-          id: comm._id,
-          commissionNumber: comm.commissionNumber || `COM-${comm._id.toString().slice(-4).toUpperCase()}`,
-          payablePartyName: comm.payablePartyName || "Developer / Builder",
-          customerName: comm.customerId?.name || `${comm.customerId?.firstName || ""} ${comm.customerId?.lastName || ""}`.trim() || "Customer",
-          projectOrProperty: comm.projectId?.name || comm.propertyId?.title || "Property Unit",
-          amount: outstanding,
-          dueDate: comm.expectedPaymentDate,
-          isPastDue,
-        });
-      }
     }
+
+    const upcomingCollections = topUpcomingCommissions.map((comm) => {
+      const expected = Number(comm.totalCommissionExpected) || 0;
+      const collected = (comm.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const outstanding = comm.totalCommissionOutstanding > 0 ? comm.totalCommissionOutstanding : Math.max(0, expected - collected);
+      const dueDate = comm.expectedPaymentDate ? new Date(comm.expectedPaymentDate) : null;
+      const isPastDue = dueDate && dueDate < now && outstanding > 0;
+
+      return {
+        id: comm._id,
+        commissionNumber: comm.commissionNumber || `COM-${comm._id.toString().slice(-4).toUpperCase()}`,
+        payablePartyName: comm.payablePartyName || "Developer / Builder",
+        customerName: comm.customerId?.name || `${comm.customerId?.firstName || ""} ${comm.customerId?.lastName || ""}`.trim() || "Customer",
+        projectOrProperty: comm.projectId?.name || comm.propertyId?.title || "Property Unit",
+        amount: outstanding,
+        dueDate: comm.expectedPaymentDate,
+        isPastDue,
+      };
+    });
 
     upcomingCollections.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
 
