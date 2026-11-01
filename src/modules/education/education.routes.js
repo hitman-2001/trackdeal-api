@@ -76,10 +76,30 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.listStudents(req, reply),
   });
 
+  fastify.get('/students/schools', {
+    preHandler: [requirePermission(PERMISSIONS.STUDENTS_READ)],
+    schema: { tags: ['Education'], summary: 'List schools for accessible students' },
+    handler: (req, reply) => controller.listStudentSchools(req, reply),
+  });
+
   fastify.post('/students', {
     preHandler: [requirePermission(PERMISSIONS.STUDENTS_CREATE)],
     schema: { tags: ['Education'], summary: 'Create student' },
     handler: (req, reply) => controller.createStudent(req, reply),
+  });
+
+  fastify.post('/students/bulk-import', {
+    preHandler: [requireAnyPermission([PERMISSIONS.STUDENTS_CREATE, PERMISSIONS.LEADS_BULK_UPLOAD])],
+    bodyLimit: 20 * 1024 * 1024,
+    schema: {
+      tags: ['Education'],
+      summary: 'Bulk import enrolled students',
+      body: {
+        type: 'object', required: ['rows'], additionalProperties: false,
+        properties: { rows: { type: 'array', minItems: 1, maxItems: 2000, items: { type: 'object' } } },
+      },
+    },
+    handler: (req, reply) => controller.importStudentsBulk(req, reply),
   });
 
   fastify.put('/students/:id', {
@@ -106,10 +126,22 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.listLeads(req, reply),
   });
 
+  fastify.get('/leads/schools', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    schema: { tags: ['Education'], summary: 'List schools from accessible student leads' },
+    handler: (req, reply) => controller.listLeadSchools(req, reply),
+  });
+
   fastify.get('/leads/:id', {
     preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
     schema: { tags: ['Education'], summary: 'Get student lead' },
     handler: (req, reply) => controller.getLead(req, reply),
+  });
+
+  fastify.get('/leads/selection', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    schema: { tags: ['Education'], summary: 'Select all matching accessible student lead IDs' },
+    handler: (req, reply) => controller.listLeadSelection(req, reply),
   });
 
   fastify.post('/leads', {
@@ -118,10 +150,41 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.createLead(req, reply),
   });
 
+  fastify.post('/leads/bulk-import', {
+    preHandler: [requireAnyPermission([PERMISSIONS.LEADS_CREATE, PERMISSIONS.LEADS_BULK_UPLOAD])],
+    bodyLimit: 20 * 1024 * 1024,
+    schema: {
+      tags: ['Education'],
+      summary: 'Bulk import student leads',
+      body: {
+        type: 'object', required: ['rows'], additionalProperties: false,
+        properties: { rows: { type: 'array', minItems: 1, maxItems: 2000, items: { type: 'object' } } },
+      },
+    },
+    handler: (req, reply) => controller.importLeadsBulk(req, reply),
+  });
+
   fastify.put('/leads/:id', {
     preHandler: [requirePermission(PERMISSIONS.LEADS_UPDATE)],
     schema: { tags: ['Education'], summary: 'Update student lead' },
     handler: (req, reply) => controller.updateLead(req, reply),
+  });
+
+  fastify.post('/leads/bulk-delete', {
+    preHandler: [requireAnyPermission([PERMISSIONS.LEADS_DELETE, PERMISSIONS.LEADS_BULK_DELETE])],
+    schema: {
+      tags: ['Education'],
+      summary: 'Bulk delete student leads',
+      body: {
+        type: 'object',
+        required: ['ids'],
+        additionalProperties: false,
+        properties: {
+          ids: { type: 'array', minItems: 1, items: { type: 'string', pattern: '^[a-fA-F0-9]{24}$' } },
+        },
+      },
+    },
+    handler: (req, reply) => controller.removeLeadsBulk(req, reply),
   });
 
   fastify.delete('/leads/:id', {

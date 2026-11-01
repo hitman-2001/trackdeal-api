@@ -23,7 +23,7 @@ async function authenticate(request, reply) {
     await request.jwtVerify();
   } catch (err) {
     throw new UnauthorizedError(
-      err.message === 'jwt expired'
+      err.code === 'FST_JWT_AUTHORIZATION_TOKEN_EXPIRED' || err.message === 'jwt expired'
         ? 'Access token has expired. Please refresh your session.'
         : 'Invalid or missing authentication token.',
     );

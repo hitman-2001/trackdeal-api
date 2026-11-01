@@ -47,13 +47,34 @@ class EducationController extends BaseController {
 
   async listStudents(request, reply) {
     const query = this.getPagination(request.query);
+    if (request.query.limit === 'all') query.limit = 'all';
     const result = await this.educationService.listStudents({ ...request.query, ...query }, this.getUser(request));
     return this.paginated(reply, result.data, result.pagination);
+  }
+
+  async listStudentSchools(request, reply) {
+    const schools = await this.educationService.listStudentSchools(this.getUser(request));
+    return this.ok(reply, schools);
+  }
+
+  async listLeadSelection(request, reply) {
+    const leads = await this.educationService.listLeads(request.query, this.getUser(request), { selectionOnly: true });
+    return this.ok(reply, leads);
+  }
+
+  async listLeadSchools(request, reply) {
+    const schools = await this.educationService.listLeadSchools(this.getUser(request));
+    return this.ok(reply, schools);
   }
 
   async createStudent(request, reply) {
     const item = await this.educationService.createStudent(request.body, this.getUser(request));
     return this.created(reply, item, 'Student created successfully');
+  }
+
+  async importStudentsBulk(request, reply) {
+    const result = await this.educationService.importStudentsBulk(request.body.rows, this.getUser(request));
+    return this.ok(reply, result, `Imported ${result.importedCount} student(s)`);
   }
 
   async updateStudent(request, reply) {
@@ -79,6 +100,7 @@ class EducationController extends BaseController {
 
   async listLeads(request, reply) {
     const query = this.getPagination(request.query);
+    if (request.query.limit === 'all') query.limit = 'all';
     const result = await this.educationService.listLeads({ ...request.query, ...query }, this.getUser(request));
     return this.paginated(reply, result.data, result.pagination);
   }
@@ -88,9 +110,19 @@ class EducationController extends BaseController {
     return this.created(reply, item, 'Student lead created successfully');
   }
 
+  async importLeadsBulk(request, reply) {
+    const result = await this.educationService.importLeadsBulk(request.body.rows, this.getUser(request));
+    return this.ok(reply, result, `Imported ${result.importedCount} student lead(s)`);
+  }
+
   async updateLead(request, reply) {
     const item = await this.educationService.updateLead(request.params.id, request.body, this.getUser(request));
     return this.ok(reply, item, 'Student lead updated successfully');
+  }
+
+  async removeLeadsBulk(request, reply) {
+    const result = await this.educationService.removeLeadsBulk(request.body.ids, this.getUser(request));
+    return this.ok(reply, result, `${result.deletedCount} student lead(s) deleted successfully`);
   }
 
   async removeLead(request, reply) {

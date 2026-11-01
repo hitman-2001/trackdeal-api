@@ -27,6 +27,7 @@ const { User } = require("../user/user.model");
 const { Organization } = require("../organization/organization.model");
 const { Customer } = require("../customer/customer.model");
 const { Lead } = require("./lead.model");
+const { processBulkImport } = require("../../shared/utils/bulk-import");
 require("../education/education.model");
 
 // ---------------------------------------------------------------------------
@@ -577,6 +578,19 @@ class LeadService extends BaseService {
     });
 
     return this.leadRepository.findByIdOrFail(lead.id, "Lead");
+  }
+
+  async importLeadsBulk(rows, actor) {
+    const result = await processBulkImport(rows, row => this.createLead(row, actor));
+    await this.logAudit({
+      actor,
+      action: "lead.bulk_import",
+      entity: "Lead",
+      module: "Leads",
+      description: `Imported ${result.importedCount} of ${result.requestedCount} leads`,
+      newValues: { ...result, errors: undefined },
+    });
+    return result;
   }
 
   /**

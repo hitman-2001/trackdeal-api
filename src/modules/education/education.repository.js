@@ -20,6 +20,12 @@ class EducationLeadRepository extends BaseRepository {
   constructor() {
     super(Lead);
   }
+
+  async softDeleteMany(filter, userId) {
+    return this.model.updateMany(this._applyTenantFilter(filter), {
+      $set: { isDeleted: true, deletedAt: new Date(), deletedBy: userId },
+    });
+  }
 }
 
 module.exports = {

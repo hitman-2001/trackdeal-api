@@ -5,6 +5,7 @@ const {
 } = require("../../shared/middleware/authenticate.middleware");
 const {
   requirePermission,
+  requireAnyPermission,
 } = require("../../shared/middleware/authorize.middleware");
 const {
   PERMISSIONS,
@@ -63,6 +64,27 @@ async function leadRoutes(fastify, opts) {
       },
     },
     controller.getById,
+  );
+
+  fastify.post(
+    "/bulk-import",
+    {
+      preHandler: [requireAnyPermission([PERMISSIONS.LEADS_CREATE, PERMISSIONS.LEADS_BULK_UPLOAD])],
+      bodyLimit: 20 * 1024 * 1024,
+      schema: {
+        tags: ["Leads"],
+        summary: "Bulk import leads",
+        body: {
+          type: "object",
+          required: ["rows"],
+          additionalProperties: false,
+          properties: {
+            rows: { type: "array", minItems: 1, maxItems: 2000, items: { type: "object" } },
+          },
+        },
+      },
+    },
+    controller.importBulk,
   );
 
   fastify.post(

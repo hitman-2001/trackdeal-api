@@ -17,6 +17,19 @@ const {
   ConflictError,
 } = require("../../shared/errors");
 const { isEducationVertical } = require("../tenant/tenant.constants");
+const { processBulkImport } = require("../../shared/utils/bulk-import");
+
+// Repeated query parameters represent multiple exact values. In particular,
+// commas inside school names must not be treated as separators.
+function selectionFilter(value) {
+  const values = value === undefined || value === null ? [] : (Array.isArray(value) ? value : [value]);
+  if (values.some(item => typeof item !== "string" && typeof item !== "number")) {
+    throw new ValidationError("Filter values must be strings or numbers.");
+  }
+  const selected = [...new Set(values.map(item => String(item).trim()).filter(Boolean))];
+  if (!selected.length) return undefined;
+  return selected.length === 1 ? selected[0] : { $in: selected };
+}
 
 class EducationService extends BaseService {
   constructor(deps = {}) {
@@ -33,6 +46,12 @@ class EducationService extends BaseService {
     if (!isEducationVertical(actor?.tenantDomain || actor?.tenantVertical)) {
       throw new ForbiddenError("This workspace is not an education tenant.");
     }
+  }
+
+  async _paginateEducationList(repository, filter, options) {
+    if (options.limit !== "all") return repository.paginate(filter, options);
+    const data = await repository.findMany(filter, { sort: options.sort, populate: options.populate });
+    return { data, pagination: { page: 1, limit: Math.max(data.length, 1), total: data.length } };
   }
 
   async getSummary(actor) {
@@ -1224,7 +1243,44 @@ class EducationService extends BaseService {
       // Non-blocking background sync
     }
 
-    const filter = { isDeleted: false };
+    const filter = await this._studentFilter(query, actor);
+
+    const result = await this._paginateEducationList(this.studentRepository, filter, {
+      page: query.page,
+      limit: query.limit,
+      sort: { createdAt: -1, _id: -1 },
+      populate: [
+        { path: "classId", select: "name code subject grade fees" },
+        {
+          path: "leadId",
+          select:
+            "institutionType educationBoard standard academicStream currentCoaching alternativeMobile city address source schoolName parentName parentMobile email",
+        },
+      ],
+    });
+
+    const enrichedData = (result.data || []).map((doc) => {
+      const student = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
+      const lead = student.leadId && typeof student.leadId === "object" ? student.leadId : null;
+      if (lead) {
+        for (const field of ["institutionType", "educationBoard", "standard", "academicStream", "currentCoaching", "alternativeMobile", "schoolName", "city", "address", "source", "parentName", "parentMobile", "email"]) {
+          if (!student[field] && lead[field]) student[field] = lead[field];
+        }
+      }
+      return student;
+    });
+
+    return {
+      data: enrichedData,
+      pagination: {
+        ...result.pagination,
+        pages: Math.ceil((result.pagination.total || 0) / (result.pagination.limit || 10)) || 1,
+      },
+    };
+  }
+
+  async _studentFilter(query, actor) {
+    const filter = { isDeleted: false, organizationId: actor.organizationId };
     if (query.status) {
       if (Array.isArray(query.status)) {
         filter.status = { $in: query.status.filter(Boolean) };
@@ -1298,51 +1354,36 @@ class EducationService extends BaseService {
       }
     }
 
-    const result = await this.studentRepository.paginate(filter, {
-      page: query.page,
-      limit: query.limit,
-      sort: { createdAt: -1 },
-      populate: [
-        { path: "classId", select: "name code subject grade fees" },
-        {
-          path: "leadId",
-          select:
-            "institutionType educationBoard standard academicStream currentCoaching alternativeMobile city address source schoolName parentName parentMobile email",
-        },
-      ],
-    });
+    const schoolName = selectionFilter(query.schoolName);
+    if (schoolName) {
+      // Match the effective school shown in the UI, including legacy students
+      // whose school is still stored on their linked lead.
+      const leads = await this.leadRepository.findMany(
+        { organizationId: actor.organizationId, schoolName, isDeleted: false, tenantVertical: "education" },
+        {},
+        "_id",
+      );
+      filter.$and = [...(filter.$and || []), {
+        $or: [
+          { schoolName },
+          { schoolName: { $in: [null, ""] }, leadId: { $in: leads.map((lead) => lead._id) } },
+        ],
+      }];
+    }
+    return filter;
+  }
 
-    const enrichedData = (result.data || []).map((doc) => {
-      const student = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
-      const lead = student.leadId && typeof student.leadId === "object" ? student.leadId : null;
-      if (lead) {
-        if (!student.institutionType && lead.institutionType) student.institutionType = lead.institutionType;
-        if (!student.educationBoard && lead.educationBoard) student.educationBoard = lead.educationBoard;
-        if (!student.standard && lead.standard) student.standard = lead.standard;
-        if (!student.academicStream && lead.academicStream) student.academicStream = lead.academicStream;
-        if (!student.currentCoaching && lead.currentCoaching) student.currentCoaching = lead.currentCoaching;
-        if (!student.alternativeMobile && lead.alternativeMobile) student.alternativeMobile = lead.alternativeMobile;
-        if (!student.schoolName && lead.schoolName) student.schoolName = lead.schoolName;
-        if (!student.city && lead.city) student.city = lead.city;
-        if (!student.address && lead.address) student.address = lead.address;
-        if (!student.source && lead.source) student.source = lead.source;
-        if (!student.parentName && lead.parentName) student.parentName = lead.parentName;
-        if (!student.parentMobile && lead.parentMobile) student.parentMobile = lead.parentMobile;
-        if (!student.email && lead.email) student.email = lead.email;
-      }
-      return student;
-    });
-
-    return {
-      data: enrichedData,
-      pagination: {
-        ...result.pagination,
-        pages:
-          Math.ceil(
-            (result.pagination.total || 0) / (result.pagination.limit || 10),
-          ) || 1,
-      },
-    };
+  async listStudentSchools(actor) {
+    this._assertEducation(actor);
+    const filter = await this._studentFilter({}, actor);
+    const students = await this.studentRepository.findMany(
+      filter,
+      { populate: { path: "leadId", select: "schoolName" } },
+      "schoolName leadId",
+    );
+    return [...new Set(students.map((student) =>
+      String(student.schoolName || student.leadId?.schoolName || "").trim(),
+    ).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   }
 
   async createStudent(data, actor) {
@@ -1418,6 +1459,20 @@ class EducationService extends BaseService {
     });
 
     return student;
+  }
+
+  async importStudentsBulk(rows, actor) {
+    this._assertEducation(actor);
+    const result = await processBulkImport(rows, row => this.createStudent(row, actor));
+    await this.logAudit({
+      actor,
+      action: "education.student.bulk_import",
+      entity: "Student",
+      module: "Education",
+      description: `Imported ${result.importedCount} of ${result.requestedCount} students`,
+      newValues: { ...result, errors: undefined },
+    });
+    return result;
   }
 
   async updateStudent(id, data, actor) {
@@ -1599,9 +1654,15 @@ class EducationService extends BaseService {
     return lead;
   }
 
-  async listLeads(query, actor) {
+  async listLeadSchools(actor) {
+    const leads = await this.listLeads({}, actor, { schoolsOnly: true });
+    return [...new Set(leads.map((lead) => String(lead.schoolName || "").trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  async listLeads(query, actor, { selectionOnly = false, schoolsOnly = false } = {}) {
     this._assertEducation(actor);
-    const filter = { isDeleted: false, tenantVertical: "education" };
+    const filter = { isDeleted: false, tenantVertical: "education", organizationId: actor.organizationId };
 
     const {
       ROLES,
@@ -1622,8 +1683,9 @@ class EducationService extends BaseService {
       // Unassigned leads or leads assigned to other staff members are strictly hidden.
       const actorId = actor?.id || actor?._id;
       filter.assignedTo = actorId;
-    } else if (query.assignedTo) {
-      filter.assignedTo = query.assignedTo;
+    } else {
+      const assignedTo = selectionFilter(query.assignedTo);
+      if (assignedTo) filter.assignedTo = assignedTo;
     }
 
     if (query.status) {
@@ -1641,16 +1703,11 @@ class EducationService extends BaseService {
       }
     }
     if (query.subStatus) filter.subStatus = query.subStatus;
+    if (query.source) filter.source = query.source;
     if (query.classInterestId) filter.classInterestId = query.classInterestId;
-    if (query.institutionType) filter.institutionType = query.institutionType;
-    if (query.educationBoard) filter.educationBoard = query.educationBoard;
-    if (query.standard) filter.standard = query.standard;
-    if (query.academicStream) filter.academicStream = query.academicStream;
-    if (query.schoolName) {
-      filter.schoolName = new RegExp(
-        String(query.schoolName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        "i"
-      );
+    for (const key of ["institutionType", "educationBoard", "standard", "academicStream", "schoolName"]) {
+      const selected = selectionFilter(query[key]);
+      if (selected) filter[key] = selected;
     }
     if (query.search) {
       const rx = new RegExp(
@@ -1670,10 +1727,17 @@ class EducationService extends BaseService {
     const sortField = hasCustomSort ? query.sort : null;
     const sortOrder = query.order === "asc" || query.order === 1 ? 1 : -1;
     const sortOptions = sortField
-      ? { [sortField]: sortOrder }
-      : { lastActionAt: 1, createdAt: -1 };
+      ? { [sortField]: sortOrder, _id: sortOrder }
+      : { lastActionAt: 1, createdAt: -1, _id: -1 };
 
-    const result = await this.leadRepository.paginate(filter, {
+    if (selectionOnly) {
+      return this.leadRepository.findMany(filter, { sort: sortOptions }, "_id");
+    }
+    if (schoolsOnly) {
+      return this.leadRepository.findMany(filter, {}, "schoolName");
+    }
+
+    const result = await this._paginateEducationList(this.leadRepository, filter, {
       page: query.page,
       limit: query.limit,
       sort: sortOptions,
@@ -1803,6 +1867,20 @@ class EducationService extends BaseService {
     });
 
     return lead;
+  }
+
+  async importLeadsBulk(rows, actor) {
+    this._assertEducation(actor);
+    const result = await processBulkImport(rows, row => this.createLead(row, actor));
+    await this.logAudit({
+      actor,
+      action: "education.lead.bulk_import",
+      entity: "Lead",
+      module: "Education",
+      description: `Imported ${result.importedCount} of ${result.requestedCount} student leads`,
+      newValues: { ...result, errors: undefined },
+    });
+    return result;
   }
 
   async updateLead(id, data, actor) {
@@ -2162,6 +2240,42 @@ class EducationService extends BaseService {
     });
 
     return student;
+  }
+
+  async removeLeadsBulk(ids, actor) {
+    this._assertEducation(actor);
+    const isAdmin = ["super_admin", "org_admin", "admin"].includes(actor?.role);
+    const permissions = actor?.permissions || [];
+    if (!isAdmin && !permissions.some(permission => ["leads.delete", "leads.bulk_delete", "*"].includes(permission))) {
+      throw new ForbiddenError("Access Denied: You do not have permission to delete leads.");
+    }
+    if (!Array.isArray(ids) || !ids.length || ids.some(id => typeof id !== "string" || !/^[a-f\d]{24}$/i.test(id))) {
+      throw new ValidationError("A non-empty array of valid lead IDs is required for bulk deletion.");
+    }
+    const actorId = actor.id || actor._id;
+    if (!actor.organizationId || !actorId) {
+      throw new ForbiddenError("An organization and authenticated user are required to delete leads.");
+    }
+    const uniqueIds = [...new Set(ids.map(id => id.toLowerCase()))];
+    const filter = {
+      _id: { $in: uniqueIds },
+      organizationId: actor.organizationId,
+      tenantVertical: "education",
+      isDeleted: false,
+    };
+    // Match the visibility rules used by the lead list and Select All.
+    if (!isAdmin && !permissions.includes("leads.view_all")) filter.assignedTo = actorId;
+    const result = await this.leadRepository.softDeleteMany(filter, actorId);
+    const deletedCount = result.modifiedCount;
+    await this.logAudit({
+      actor,
+      action: "education.lead.bulk_delete",
+      entity: "Lead",
+      module: "Education",
+      description: `Bulk deleted ${deletedCount} student leads`,
+      newValues: { requestedIds: uniqueIds, deletedCount },
+    });
+    return { deletedCount, requestedCount: uniqueIds.length, skippedCount: uniqueIds.length - deletedCount };
   }
 
   async removeLead(id, actor) {

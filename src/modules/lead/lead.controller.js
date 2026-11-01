@@ -39,6 +39,14 @@ class LeadController extends BaseController {
     return this.created(reply, lead, "Lead created successfully");
   }
 
+  async importBulk(request, reply) {
+    const result = await this.leadService.importLeadsBulk(
+      request.body.rows,
+      this.getUser(request)
+    );
+    return this.ok(reply, result, `Imported ${result.importedCount} lead(s)`);
+  }
+
   async update(request, reply) {
     const lead = await this.leadService.updateLead(
       request.params.id,
