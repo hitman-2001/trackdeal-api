@@ -1842,6 +1842,53 @@ class LeadService extends BaseService {
   }
 
   /**
+   * Check if a lead has any active/pending tasks or follow-ups.
+   * @param {string} leadId
+   * @returns {Promise<{ hasActiveTasks: boolean, count: number }>}
+   */
+  async checkHasActiveTasks(leadId) {
+    const mongoose = require("mongoose");
+    if (mongoose.connection.readyState !== 1) {
+      return { hasActiveTasks: false, count: 0 };
+    }
+    const { Task } = require("../task/task.model");
+    const { LeadFollowUp } = require("./lead.model");
+
+    const [taskCount, followUpCount] = await Promise.all([
+      Task.countDocuments({
+        leadId,
+        isDeleted: { $ne: true },
+        status: { $nin: ["completed", "cancelled"] },
+      }),
+      LeadFollowUp.countDocuments({
+        leadId,
+        isDeleted: { $ne: true },
+        status: { $nin: ["completed", "cancelled"] },
+      }),
+    ]);
+
+    const total = taskCount + followUpCount;
+    return {
+      hasActiveTasks: total > 0,
+      count: total,
+    };
+  }
+
+  /**
+   * Ensure lead has no pending/active tasks or follow-ups before deletion.
+   * @param {string} leadId
+   */
+  async assertNoActiveTasks(leadId) {
+    const { hasActiveTasks } = await this.checkHasActiveTasks(leadId);
+    if (hasActiveTasks) {
+      throw new BusinessRuleError(
+        "Cannot delete lead with active tasks. Please complete the task then delete the lead.",
+        "LEAD_HAS_ACTIVE_TASKS"
+      );
+    }
+  }
+
+  /**
    * Soft-delete a Lead.
    */
   async deleteLead(id, actor) {
@@ -1852,6 +1899,10 @@ class LeadService extends BaseService {
     }
 
     await this.leadRepository.findByIdOrFail(id, "Lead");
+
+    // Block deletion if lead has active or incomplete tasks
+    await this.assertNoActiveTasks(id);
+
     await this.leadRepository.softDelete(id, actor.id);
     await this.logAudit({
       action: AUDIT_ACTIONS.DELETE,

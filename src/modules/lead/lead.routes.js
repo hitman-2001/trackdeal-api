@@ -127,6 +127,19 @@ async function leadRoutes(fastify, opts) {
     controller.remove,
   );
 
+  fastify.get(
+    "/:id/has-active-tasks",
+    {
+      preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+      schema: {
+        tags: ["Leads"],
+        summary: "Check if lead has active tasks or follow-ups",
+        params: leadIdParamSchema,
+      },
+    },
+    controller.checkActiveTasks,
+  );
+
   fastify.post(
     "/:id/assign",
     {

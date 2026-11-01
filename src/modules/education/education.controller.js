@@ -130,6 +130,11 @@ class EducationController extends BaseController {
     return this.noContent(reply);
   }
 
+  async checkActiveTasks(request, reply) {
+    const result = await this.educationService.checkHasActiveTasks(request.params.id);
+    return this.ok(reply, result);
+  }
+
   async enrollLead(request, reply) {
     const student = await this.educationService.enrollLead(request.params.id, request.body || {}, this.getUser(request));
     return this.ok(reply, student, 'Student enrolled successfully');

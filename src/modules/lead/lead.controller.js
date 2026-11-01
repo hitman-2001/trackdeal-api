@@ -61,6 +61,11 @@ class LeadController extends BaseController {
     return this.noContent(reply);
   }
 
+  async checkActiveTasks(request, reply) {
+    const result = await this.leadService.checkHasActiveTasks(request.params.id);
+    return this.ok(reply, result);
+  }
+
   async assign(request, reply) {
     const lead = await this.leadService.assignLead(
       request.params.id,

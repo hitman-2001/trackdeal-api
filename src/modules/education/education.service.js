@@ -2251,6 +2251,46 @@ class EducationService extends BaseService {
     return student;
   }
 
+  async checkHasActiveTasks(leadId) {
+    const { LeadService } = require("../lead/lead.service");
+    const leadService = new LeadService();
+    return leadService.checkHasActiveTasks(leadId);
+  }
+
+  async assertNoActiveTasks(leadId) {
+    const { LeadService } = require("../lead/lead.service");
+    const leadService = new LeadService();
+    return leadService.assertNoActiveTasks(leadId);
+  }
+
+  async assertNoActiveTasksBulk(leadIds) {
+    if (mongoose.connection.readyState !== 1) {
+      return;
+    }
+    const { Task } = require("../task/task.model");
+    const { LeadFollowUp } = require("../lead/lead.model");
+
+    const [activeTask, activeFollowUp] = await Promise.all([
+      Task.findOne({
+        leadId: { $in: leadIds },
+        isDeleted: { $ne: true },
+        status: { $nin: ["completed", "cancelled"] },
+      }).lean(),
+      LeadFollowUp.findOne({
+        leadId: { $in: leadIds },
+        isDeleted: { $ne: true },
+        status: { $nin: ["completed", "cancelled"] },
+      }).lean(),
+    ]);
+
+    if (activeTask || activeFollowUp) {
+      throw new BusinessRuleError(
+        "Cannot delete lead(s) with active tasks. Please complete the task then delete the lead.",
+        "LEAD_HAS_ACTIVE_TASKS"
+      );
+    }
+  }
+
   async removeLeadsBulk(ids, actor) {
     this._assertEducation(actor);
     const isAdmin = ["super_admin", "org_admin", "admin"].includes(actor?.role);
@@ -2266,6 +2306,10 @@ class EducationService extends BaseService {
       throw new ForbiddenError("An organization and authenticated user are required to delete leads.");
     }
     const uniqueIds = [...new Set(ids.map(id => id.toLowerCase()))];
+
+    // Ensure none of the selected leads have active or incomplete tasks
+    await this.assertNoActiveTasksBulk(uniqueIds);
+
     const filter = {
       _id: { $in: uniqueIds },
       organizationId: actor.organizationId,
@@ -2311,6 +2355,10 @@ class EducationService extends BaseService {
       );
     }
     const lead = await this.leadRepository.findByIdOrFail(id, "Lead");
+
+    // Block deletion if lead has active or incomplete tasks
+    await this.assertNoActiveTasks(id);
+
     await this.leadRepository.softDelete(id, actor.id);
 
     await this.logAudit({

@@ -193,6 +193,12 @@ async function educationRoutes(fastify) {
     handler: (req, reply) => controller.removeLead(req, reply),
   });
 
+  fastify.get('/leads/:id/has-active-tasks', {
+    preHandler: [requirePermission(PERMISSIONS.LEADS_READ)],
+    schema: { tags: ['Education'], summary: 'Check if student lead has active tasks' },
+    handler: (req, reply) => controller.checkActiveTasks(req, reply),
+  });
+
   fastify.post('/leads/:id/enroll', {
     preHandler: [requirePermission(PERMISSIONS.STUDENTS_CREATE)],
     schema: { tags: ['Education'], summary: 'Enroll a student lead into a class' },
