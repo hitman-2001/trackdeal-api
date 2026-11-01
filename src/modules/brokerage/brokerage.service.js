@@ -101,6 +101,11 @@ class BrokerageService extends BaseService {
     brokerage.updatedBy = actor.id;
     await brokerage.save();
 
+    await this.publishEvent('brokerage.updated', {
+      brokerageId: id,
+      organizationId: brokerage.organizationId,
+    });
+
     await this.logAudit({
       action: AUDIT_ACTIONS.UPDATE,
       entity: 'Brokerage',
@@ -127,6 +132,11 @@ class BrokerageService extends BaseService {
     brokerage.status = 'approved';
     brokerage.updatedBy = actor.id;
     await brokerage.save();
+
+    await this.publishEvent('brokerage.approved', {
+      brokerageId: id,
+      organizationId: brokerage.organizationId,
+    });
 
     await this.logAudit({
       action: AUDIT_ACTIONS.UPDATE,
@@ -157,6 +167,11 @@ class BrokerageService extends BaseService {
     brokerage.settlementReference = settlementReference;
     brokerage.updatedBy = actor.id;
     await brokerage.save();
+
+    await this.publishEvent('brokerage.updated', {
+      brokerageId: id,
+      organizationId: brokerage.organizationId,
+    });
 
     await this.logAudit({
       action: AUDIT_ACTIONS.UPDATE,

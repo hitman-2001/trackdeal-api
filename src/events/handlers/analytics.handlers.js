@@ -189,6 +189,22 @@ function registerAnalyticsHandlers(eventBus) {
     }
   });
 
+  // deal.updated (stage transitions, approvals) → invalidate analytics cache
+  eventBus.on(EVENTS.DEAL_UPDATED, async ({ payload }) => {
+    try {
+      if (payload?.organizationId) {
+        await analyticsService.clearCacheForOrg(payload.organizationId);
+      } else if (payload?.dealId) {
+        const deal = await loadDeal(payload.dealId);
+        if (deal?.organizationId) {
+          await analyticsService.clearCacheForOrg(deal.organizationId);
+        }
+      }
+    } catch (err) {
+      console.error('[Analytics:deal.updated]', err.message);
+    }
+  });
+
   // deal.cancelled when deal was a reservation → increment reservationsBouncedCount
   eventBus.on(EVENTS.DEAL_CANCELLED, async ({ payload }) => {
     try {
@@ -284,6 +300,31 @@ function registerAnalyticsHandlers(eventBus) {
       });
     } catch (err) {
       console.error('[Analytics:payment.received]', err.message);
+    }
+  });
+
+  eventBus.on('commission.stage_changed', async ({ payload }) => {
+    try {
+      if (payload?.organizationId) {
+        await analyticsService.clearCacheForOrg(payload.organizationId);
+      } else if (payload?.commissionId) {
+        const comm = await loadInvoice(payload.commissionId).catch(() => null);
+        if (comm?.organizationId) {
+          await analyticsService.clearCacheForOrg(comm.organizationId);
+        }
+      }
+    } catch (err) {
+      console.error('[Analytics:commission.stage_changed]', err.message);
+    }
+  });
+
+  eventBus.on('brokerage.approved', async ({ payload }) => {
+    try {
+      if (payload?.organizationId) {
+        await analyticsService.clearCacheForOrg(payload.organizationId);
+      }
+    } catch (err) {
+      console.error('[Analytics:brokerage.approved]', err.message);
     }
   });
 

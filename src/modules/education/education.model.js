@@ -46,6 +46,7 @@ const classSchema = new mongoose.Schema(
 );
 
 classSchema.index({ organizationId: 1, name: 1 });
+classSchema.index({ organizationId: 1, isDeleted: 1, status: 1 });
 
 const studentSchema = new mongoose.Schema(
   {
@@ -111,6 +112,8 @@ const studentSchema = new mongoose.Schema(
 );
 
 studentSchema.index({ organizationId: 1, mobile: 1 });
+studentSchema.index({ organizationId: 1, isDeleted: 1, status: 1 });
+studentSchema.index({ organizationId: 1, leadId: 1, isDeleted: 1 });
 
 const EducationClass = mongoose.model('EducationClass', classSchema);
 const Student = mongoose.model('Student', studentSchema);

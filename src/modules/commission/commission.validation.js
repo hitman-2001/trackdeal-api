@@ -56,8 +56,7 @@ const recordCollectionSchema = {
 
 const transitionStageSchema = {
   type: "object",
-  required: ["status"],
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     status: {
       type: "string",
@@ -72,11 +71,15 @@ const transitionStageSchema = {
         "payout_calculated",
         "payout_eligible",
         "payout_authorized",
+        "payout_approved",
         "payout_released",
         "closed",
         "cancelled",
         "clawed_back",
       ],
+    },
+    stage: {
+      type: "string",
     },
     notes: { type: "string", maxLength: 1000 },
   },

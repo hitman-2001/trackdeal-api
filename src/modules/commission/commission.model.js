@@ -275,6 +275,8 @@ commissionSchema.index(
 );
 commissionSchema.index({ organizationId: 1, paymentStatus: 1 });
 commissionSchema.index({ organizationId: 1, expectedPaymentDate: 1 });
+commissionSchema.index({ organizationId: 1, isDeleted: 1, status: 1 });
+commissionSchema.index({ organizationId: 1, isDeleted: 1, expectedPaymentDate: 1 });
 
 // ---------------------------------------------------------------------------
 // 2. Commission Slab Model — Owner: Commission Module

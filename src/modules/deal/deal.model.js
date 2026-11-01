@@ -147,6 +147,8 @@ dealSchema.index({ unit: 1 });
 dealSchema.index({ broker: 1 });
 dealSchema.index({ status: 1, createdAt: -1 });
 dealSchema.index({ organizationId: 1, branchId: 1, status: 1 });
+dealSchema.index({ organizationId: 1, isDeleted: 1, status: 1, createdAt: -1 });
+dealSchema.index({ organizationId: 1, isDeleted: 1, assignedTo: 1 });
 
 // Auto-generate deal number
 dealSchema.pre("save", async function (next) {

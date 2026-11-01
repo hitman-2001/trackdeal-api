@@ -100,10 +100,14 @@ class CommissionController extends BaseController {
   }
 
   async transition(request, reply) {
-    const { status } = request.body;
+    const { status, stage } = request.body || {};
+    let targetStatus = status || stage;
+    if (targetStatus === 'payout_approved') {
+      targetStatus = 'payout_authorized';
+    }
     const commission = await this.commissionService.transitionStage(
       request.params.id,
-      status,
+      targetStatus,
       this.getUser(request),
     );
     return this.ok(reply, commission);
