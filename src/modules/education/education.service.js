@@ -149,13 +149,18 @@ class EducationService extends BaseService {
       this.leadRepository.count({
         ...baseLeadFilter,
         updatedAt: { $lt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
-        status: { $nin: ["enrolled", "converted", "lost"] },
+        status: { $nin: ["enrolled", "converted", "lost", "not_interested"] },
       }),
     ]);
 
     const stageBreakdown = {
       new: 0,
       assigned: 0,
+      interested: 0,
+      call_back: 0,
+      future_prospect: 0,
+      enrolled: 0,
+      not_interested: 0,
       contacted: 0,
       follow_up: 0,
       meeting_scheduled: 0,
@@ -168,12 +173,14 @@ class EducationService extends BaseService {
     for (const s of stageCounts) {
       if (s._id) {
         const key = String(s._id).toLowerCase();
-        if (key === "enrolled") {
+        if (key === "enrolled" || key === "converted") {
+          stageBreakdown.enrolled = (stageBreakdown.enrolled || 0) + s.count;
           stageBreakdown.converted = (stageBreakdown.converted || 0) + s.count;
-        } else if (stageBreakdown[key] !== undefined) {
-          stageBreakdown[key] = s.count;
+        } else if (key === "not_interested" || key === "lost") {
+          stageBreakdown.not_interested = (stageBreakdown.not_interested || 0) + s.count;
+          stageBreakdown.lost = (stageBreakdown.lost || 0) + s.count;
         } else {
-          stageBreakdown[key] = s.count;
+          stageBreakdown[key] = (stageBreakdown[key] || 0) + s.count;
         }
       }
     }
@@ -566,6 +573,9 @@ class EducationService extends BaseService {
         ...rangeMatch,
         status: {
           $in: [
+            "interested",
+            "call_back",
+            "future_prospect",
             "counseling_scheduled",
             "meeting_scheduled",
             "follow_up",
@@ -729,8 +739,20 @@ class EducationService extends BaseService {
     }
 
     const stage1 = totalInquiries;
-    const stage2 = stage1 - (stageMap.new || 0);
+    const stage2 =
+      (stageMap.interested || 0) +
+      (stageMap.call_back || 0) +
+      (stageMap.future_prospect || 0) +
+      (stageMap.contacted || 0) +
+      (stageMap.counseling_scheduled || 0) +
+      (stageMap.meeting_scheduled || 0) +
+      (stageMap.follow_up || 0) +
+      (stageMap.qualified || 0) +
+      (stageMap.application_trial || 0) +
+      (stageMap.enrolled || 0) +
+      (stageMap.converted || 0);
     const stage3 =
+      (stageMap.interested || 0) +
       (stageMap.counseling_scheduled || 0) +
       (stageMap.meeting_scheduled || 0) +
       (stageMap.follow_up || 0) +

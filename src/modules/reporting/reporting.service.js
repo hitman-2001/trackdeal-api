@@ -183,7 +183,7 @@ class ReportingService extends BaseService {
       if (s._id) stageMap[String(s._id).toLowerCase()] = s.count;
     }
     const totalLeads = leadCount;
-    const contactedLeads = totalLeads - (stageMap.new || 0);
+    const contactedLeads = Math.max(0, totalLeads - (stageMap.new || 0) - (stageMap.assigned || 0));
     const inNegotiation = (stageMap.site_visit || 0) + (stageMap.negotiation || 0) + (stageMap.offer_accepted || 0) + (stageMap.converted || 0);
     const convertedDeals = convertedLeadCount;
 
