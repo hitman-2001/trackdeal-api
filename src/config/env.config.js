@@ -35,6 +35,14 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   CORS_CREDENTIALS: z.string().default('true').transform((v) => v === 'true'),
 
+  // Browser session cookie
+  SESSION_COOKIE_NAME: z.string().default('trackdeal_refresh'),
+  SESSION_COOKIE_SAME_SITE: z.enum(['strict', 'lax', 'none']).default('lax'),
+  SESSION_COOKIE_SECURE: z.string().optional().transform((v) =>
+    v === undefined ? undefined : v === 'true'
+  ),
+  SESSION_COOKIE_MAX_AGE_SECONDS: z.string().default('604800').transform(Number),
+
   // Rate Limiting
   RATE_LIMIT_MAX: z.string().default('100').transform(Number),
   RATE_LIMIT_TIME_WINDOW: z.string().default('60000').transform(Number),

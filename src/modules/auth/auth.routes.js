@@ -8,7 +8,7 @@ const { AuthController } = require('./auth.controller');
 // Base path: /api/v1/auth
 // ---------------------------------------------------------------------------
 
-async function authRoutes(fastify, opts) {
+async function authRoutes(fastify, _opts) {
   const { TokenService } = require('../../shared/services/token.service');
   const { jwtConfig } = require('../../config/jwt.config');
 
@@ -127,10 +127,7 @@ async function authRoutes(fastify, opts) {
       security: [],
       body: {
         type: 'object',
-        required: ['refreshToken'],
-        properties: {
-          refreshToken: { type: 'string' },
-        },
+        additionalProperties: false,
       },
     },
     handler: controller.refresh,
@@ -138,16 +135,13 @@ async function authRoutes(fastify, opts) {
 
   // POST /auth/logout
   fastify.post('/logout', {
-    preHandler: [authenticate],
     schema: {
       tags: ['Auth'],
       summary: 'Logout and revoke active session',
+      security: [],
       body: {
         type: 'object',
-        required: ['refreshToken'],
-        properties: {
-          refreshToken: { type: 'string' },
-        },
+        additionalProperties: false,
       },
     },
     handler: controller.logout,

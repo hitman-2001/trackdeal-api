@@ -18,6 +18,7 @@ const { registerEventHandlers } = require("./events/event-registry");
 
 // Fastify plugins
 const corsPlugin = require("./plugins/cors.plugin");
+const cookiePlugin = require("./plugins/cookie.plugin");
 const helmetPlugin = require("./plugins/helmet.plugin");
 const rateLimitPlugin = require("./plugins/rate-limit.plugin");
 const jwtPlugin = require("./plugins/jwt.plugin");
@@ -76,6 +77,7 @@ async function buildApp() {
   // ------------------------------------------------------------------
   await fastify.register(helmetPlugin);
   await fastify.register(corsPlugin);
+  await fastify.register(cookiePlugin);
   await fastify.register(rateLimitPlugin);
   await fastify.register(jwtPlugin);
   await fastify.register(swaggerPlugin);

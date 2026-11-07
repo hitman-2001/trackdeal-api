@@ -495,10 +495,11 @@ class AuthService extends BaseService {
       storedToken.isRevoked = true;
       await storedToken.save();
     }
+    const sessionUserId = userId || storedToken?.user?._id || storedToken?.user;
 
     // Publish event
     await this.publishEvent(EVENTS.USER_LOGGED_OUT, {
-      userId,
+      userId: sessionUserId,
       ip: meta.ip,
     });
 
@@ -506,8 +507,8 @@ class AuthService extends BaseService {
     await this.logAudit({
       action: AUDIT_ACTIONS.LOGOUT,
       entity: 'User',
-      entityId: userId,
-      userId,
+      entityId: sessionUserId,
+      userId: sessionUserId,
       description: 'User logged out successfully',
       requestMetadata: meta,
     });

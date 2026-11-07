@@ -20,20 +20,20 @@ const corsConfig = {
     // 2. Explicitly configured origins
     if (configuredOrigins.includes(origin)) return cb(null, true);
 
-    // 3. Capacitor mobile app origins (Android WebView runs at https://localhost or capacitor://localhost)
-    if (
-      origin === 'https://localhost' ||
-      origin === 'http://localhost' ||
-      origin.startsWith('capacitor://') ||
-      origin.includes('localhost:') ||
-      origin.includes('127.0.0.1')
-    ) {
-      return cb(null, true);
-    }
+    // 3. Validate local development, Capacitor, and TrackDeal subdomains by parsed hostname.
+    try {
+      const url = new URL(origin);
+      const isLocalOrigin =
+        ['http:', 'https:', 'capacitor:'].includes(url.protocol) &&
+        (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+      if (isLocalOrigin) return cb(null, true);
 
-    // 4. Wildcard matching for domain subdomains (e.g. *.trackdeal.in)
-    if (origin.endsWith('trackdeal.in')) {
-      return cb(null, true);
+      if (
+        url.protocol === 'https:' &&
+        (url.hostname === 'trackdeal.in' || url.hostname.endsWith('.trackdeal.in'))
+      ) return cb(null, true);
+    } catch (_) {
+      // Invalid origins are rejected below.
     }
 
     return cb(new Error(`Not allowed by CORS: ${origin}`), false);
