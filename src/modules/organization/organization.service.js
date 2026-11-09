@@ -15,6 +15,161 @@ class OrganizationService extends BaseService {
     this.repository = this.organizationRepository;
   }
 
+  _educationAdminCodes() {
+    const configured = process.env.EDUCATION_TENANT_ADMIN_CODES || 'manchcla,manchclasses';
+    return new Set(
+      configured
+        .split(',')
+        .map((code) => code.trim().toLowerCase())
+        .filter(Boolean),
+    );
+  }
+
+  async _resolveEducationAdmin(actor, { required = true } = {}) {
+    const role = String(actor?.role || '').toLowerCase();
+    const isOrgAdmin = role === 'org_admin' || role === 'organization_admin';
+    if (!isOrgAdmin || !actor?.organizationId) {
+      if (required) throw new ForbiddenError('Access restricted to the Manch Classes administrators.');
+      return null;
+    }
+
+    const organization = await tenantContext.run({ isSystemOverride: true }, () =>
+      this.organizationRepository.findById(actor.organizationId),
+    );
+    const hasDelegatedAccess = Boolean(
+      organization &&
+      !organization.isDeleted &&
+      organization.vertical === 'education' &&
+      (
+        organization.settings?.educationTenantAdmin === true ||
+        this._educationAdminCodes().has(String(organization.code || '').toLowerCase())
+      )
+    );
+
+    if (!hasDelegatedAccess) {
+      if (required) throw new ForbiddenError('Access restricted to the Manch Classes administrators.');
+      return null;
+    }
+    return organization;
+  }
+
+  async getEducationAdminAccess(actor) {
+    const organization = await this._resolveEducationAdmin(actor, { required: false });
+    return {
+      allowed: Boolean(organization),
+      organizationId: organization?._id || null,
+    };
+  }
+
+  async listEducationTenants(query = {}, actor) {
+    const manager = await this._resolveEducationAdmin(actor);
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+    const filter = { vertical: 'education', isDeleted: { $ne: true } };
+
+    if (query.status) {
+      if (query.status === 'suspended') {
+        filter.$or = [{ status: 'suspended' }, { 'subscription.status': 'suspended' }];
+      } else {
+        filter.status = query.status;
+        filter['subscription.status'] = { $ne: 'suspended' };
+      }
+    }
+    if (query.search) {
+      const escaped = String(query.search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const search = new RegExp(escaped, 'i');
+      const searchFields = [{ name: search }, { code: search }, { city: search }, { email: search }];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchFields }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchFields;
+      }
+    }
+
+    return tenantContext.run({ isSystemOverride: true }, async () => {
+      const { User } = require('../user/user.model');
+      const { Lead } = require('../lead/lead.model');
+      const [total, organizations] = await Promise.all([
+        this.organizationRepository.model.countDocuments(filter),
+        this.organizationRepository.model.find(filter)
+          .select('name code email phone city state organizationType status subscription maxUsers createdAt')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+      ]);
+      const organizationIds = organizations.map((organization) => organization._id);
+      const [userCounts, leadCounts] = await Promise.all([
+        User.aggregate([
+          { $match: { organizationId: { $in: organizationIds }, isDeleted: { $ne: true } } },
+          { $group: { _id: '$organizationId', count: { $sum: 1 } } },
+        ]),
+        Lead.aggregate([
+          { $match: { organizationId: { $in: organizationIds }, isDeleted: { $ne: true } } },
+          { $group: { _id: '$organizationId', count: { $sum: 1 } } },
+        ]),
+      ]);
+      const usersByOrg = Object.fromEntries(userCounts.map((row) => [String(row._id), row.count]));
+      const leadsByOrg = Object.fromEntries(leadCounts.map((row) => [String(row._id), row.count]));
+
+      return {
+        data: organizations.map((organization) => ({
+          ...organization,
+          status: organization.status === 'suspended' || organization.subscription?.status === 'suspended'
+            ? 'suspended'
+            : organization.status,
+          usersCount: usersByOrg[String(organization._id)] || 0,
+          leadsCount: leadsByOrg[String(organization._id)] || 0,
+          isCurrentOrganization: String(organization._id) === String(manager._id),
+        })),
+        pagination: { page, limit, total },
+      };
+    });
+  }
+
+  async setEducationTenantStatus(id, status, actor) {
+    const manager = await this._resolveEducationAdmin(actor);
+    if (!['active', 'suspended'].includes(status)) {
+      throw new BusinessRuleError('Invalid Education tenant status.');
+    }
+    if (String(manager._id) === String(id)) {
+      throw new BusinessRuleError('Manch Classes cannot disable its own administrator tenant.');
+    }
+
+    const organization = await tenantContext.run({ isSystemOverride: true }, () =>
+      this.organizationRepository.findByIdOrFail(id, 'Organization'),
+    );
+    if (organization.vertical !== 'education') {
+      throw new ForbiddenError('Only Education tenant organizations can be managed here.');
+    }
+    if (organization.subscription?.status === 'cancelled') {
+      throw new BusinessRuleError('A cancelled tenant cannot be enabled from the Education directory.');
+    }
+
+    const oldStatus = organization.status;
+    const oldSubscriptionStatus = organization.subscription?.status;
+    const updated = await tenantContext.run({ isSystemOverride: true }, () =>
+      this.organizationRepository.update(id, {
+        status,
+        'subscription.status': status,
+      }),
+    );
+
+    await this.logAudit({
+      action: AUDIT_ACTIONS.UPDATE,
+      entity: 'Organization',
+      entityId: id,
+      userId: actor.id,
+      organizationId: manager._id,
+      description: `${status === 'suspended' ? 'Disabled' : 'Enabled'} Education tenant '${updated.name}' from Manch Classes`,
+      oldValues: { status: oldStatus, 'subscription.status': oldSubscriptionStatus },
+      newValues: { status, 'subscription.status': status },
+    });
+    return updated;
+  }
+
   /**
    * Create a new organization (platform registration).
    * Only Super Admins are authorized.
@@ -173,6 +328,11 @@ class OrganizationService extends BaseService {
 
     // Prevent code modification
     delete data.code;
+    // Delegated tenant administration is a platform-controlled capability and
+    // must never be self-assigned through the regular organization settings API.
+    if (actor.role !== 'super_admin' && data.settings) {
+      delete data.settings.educationTenantAdmin;
+    }
 
     // Synchronize maxUsers across root and subscription subdocument
     if (data.maxUsers !== undefined) {

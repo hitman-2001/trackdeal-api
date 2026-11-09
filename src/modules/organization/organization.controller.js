@@ -16,6 +16,34 @@ class OrganizationController extends BaseController {
     return this.paginated(reply, data, meta);
   }
 
+  async educationAdminAccess(req, reply) {
+    const access = await this.organizationService.getEducationAdminAccess(this.getUser(req));
+    return this.ok(reply, access);
+  }
+
+  async listEducationTenants(req, reply) {
+    const result = await this.organizationService.listEducationTenants(req.query, this.getUser(req));
+    return this.paginated(reply, result.data, result.pagination, 'Education tenants retrieved successfully');
+  }
+
+  async suspendEducationTenant(req, reply) {
+    const org = await this.organizationService.setEducationTenantStatus(
+      req.params.id,
+      'suspended',
+      this.getUser(req),
+    );
+    return this.ok(reply, org, 'Education tenant disabled successfully');
+  }
+
+  async activateEducationTenant(req, reply) {
+    const org = await this.organizationService.setEducationTenantStatus(
+      req.params.id,
+      'active',
+      this.getUser(req),
+    );
+    return this.ok(reply, org, 'Education tenant enabled successfully');
+  }
+
   async getById(req, reply) {
     const actor = this.getUser(req);
     if (actor.role !== 'super_admin' && String(actor.organizationId) !== String(req.params.id)) {

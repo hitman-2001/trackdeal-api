@@ -16,7 +16,7 @@ const {
  * @param {import('fastify').FastifyInstance} fastify
  * @param {object} opts
  */
-async function organizationRoutes(fastify, opts) {
+async function organizationRoutes(fastify, _opts) {
   const controller = new OrganizationController();
 
   // All organization routes require authentication
@@ -37,6 +37,51 @@ async function organizationRoutes(fastify, opts) {
       },
     },
     handler: controller.list,
+  });
+
+  // Delegated education administration. These routes intentionally sit outside
+  // /admin and are authorized again in the service against the actor's org.
+  fastify.get('/education-admin/access', {
+    schema: {
+      tags: ['Organizations'],
+      summary: 'Check delegated Education tenant administration access',
+    },
+    handler: controller.educationAdminAccess,
+  });
+
+  fastify.get('/education-admin/tenants', {
+    schema: {
+      tags: ['Organizations'],
+      summary: 'List Education tenant organizations for a delegated administrator',
+      querystring: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', minimum: 1, default: 1 },
+          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          search: { type: 'string', maxLength: 100 },
+          status: { type: 'string', enum: ['active', 'trial', 'inactive', 'suspended'] },
+        },
+      },
+    },
+    handler: controller.listEducationTenants,
+  });
+
+  fastify.post('/education-admin/tenants/:id/suspend', {
+    schema: {
+      tags: ['Organizations'],
+      summary: 'Disable an Education tenant organization',
+      params: orgIdParamSchema,
+    },
+    handler: controller.suspendEducationTenant,
+  });
+
+  fastify.post('/education-admin/tenants/:id/activate', {
+    schema: {
+      tags: ['Organizations'],
+      summary: 'Enable an Education tenant organization',
+      params: orgIdParamSchema,
+    },
+    handler: controller.activateEducationTenant,
   });
 
   // GET /organizations/:id (Get organization by ID)

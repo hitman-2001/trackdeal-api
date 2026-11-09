@@ -184,6 +184,12 @@ const organizationSchema = new mongoose.Schema(
         type: String,
         default: 'DD/MM/YYYY',
       },
+      // Grants a trusted education organization limited, vertical-scoped
+      // tenant administration. It does not grant access to platform admin APIs.
+      educationTenantAdmin: {
+        type: Boolean,
+        default: false,
+      },
     },
   },
   { timestamps: true }
