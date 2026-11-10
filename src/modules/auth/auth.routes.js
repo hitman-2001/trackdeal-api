@@ -27,6 +27,8 @@ async function authRoutes(fastify, _opts) {
     fastify,
     logger: fastify.log,
   });
+  const strictAuthRateLimit = { max: 10, timeWindow: '1 minute' };
+  const sensitiveAuthRateLimit = { max: 5, timeWindow: '15 minutes' };
 
   // GET /auth/invitations/validate (Validate invitation token)
   fastify.get('/invitations/validate', {
@@ -47,6 +49,7 @@ async function authRoutes(fastify, _opts) {
 
   // POST /auth/invitations/accept (Accept invitation and register password)
   fastify.post('/invitations/accept', {
+    config: { rateLimit: sensitiveAuthRateLimit },
     schema: {
       tags: ['Auth'],
       summary: 'Accept invitation and register password',
@@ -66,6 +69,7 @@ async function authRoutes(fastify, _opts) {
 
   // POST /auth/login
   fastify.post('/login', {
+    config: { rateLimit: strictAuthRateLimit },
     schema: {
       tags: ['Auth'],
       summary: 'Login with email and password (organization required except platform Super Admin)',
@@ -86,6 +90,7 @@ async function authRoutes(fastify, _opts) {
 
   // POST /auth/mfa/verify
   fastify.post('/mfa/verify', {
+    config: { rateLimit: strictAuthRateLimit },
     schema: {
       tags: ['Auth'],
       summary: 'Verify Super Admin MFA verification code',
@@ -104,6 +109,7 @@ async function authRoutes(fastify, _opts) {
 
   // POST /auth/mfa/resend
   fastify.post('/mfa/resend', {
+    config: { rateLimit: sensitiveAuthRateLimit },
     schema: {
       tags: ['Auth'],
       summary: 'Resend Super Admin MFA verification code to integration@swarajyaconsultancy.in',
@@ -126,7 +132,7 @@ async function authRoutes(fastify, _opts) {
       summary: 'Refresh access token with rotation',
       security: [],
       body: {
-        type: 'object',
+        type: ['object', 'null'],
         additionalProperties: false,
         properties: {
           refreshToken: { type: 'string' },
@@ -143,7 +149,7 @@ async function authRoutes(fastify, _opts) {
       summary: 'Logout and revoke active session',
       security: [],
       body: {
-        type: 'object',
+        type: ['object', 'null'],
         additionalProperties: false,
         properties: {
           refreshToken: { type: 'string' },
@@ -155,6 +161,7 @@ async function authRoutes(fastify, _opts) {
 
   // POST /auth/change-password
   fastify.post('/change-password', {
+    config: { rateLimit: sensitiveAuthRateLimit },
     preHandler: [authenticate],
     schema: {
       tags: ['Auth'],
@@ -183,6 +190,7 @@ async function authRoutes(fastify, _opts) {
 
   // POST /auth/forgot-password
   fastify.post('/forgot-password', {
+    config: { rateLimit: sensitiveAuthRateLimit },
     schema: {
       tags: ['Auth'],
       summary: 'Request password reset email',
@@ -200,6 +208,7 @@ async function authRoutes(fastify, _opts) {
 
   // POST /auth/reset-password
   fastify.post('/reset-password', {
+    config: { rateLimit: sensitiveAuthRateLimit },
     schema: {
       tags: ['Auth'],
       summary: 'Reset password using token',

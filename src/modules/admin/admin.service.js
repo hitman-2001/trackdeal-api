@@ -14,6 +14,12 @@ const { Agent } = require('../agent/agent.model');
 const { AuditLog } = require('../audit/audit.model');
 const { tenantContext } = require('../../shared/context/tenant-context');
 const { isPlatformAdmin } = require('../tenant/tenant.constants');
+const {
+  ForbiddenError,
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+} = require('../../shared/errors');
 
 class AdminService extends BaseService {
   /**
@@ -527,9 +533,11 @@ class AdminService extends BaseService {
         const softDeleted = await User.find({ email: cleanEmail, isDeleted: true });
         for (const dUser of softDeleted) {
           dUser.email = `${dUser.email}__deleted__${dUser._id}`;
-          await dUser.save().catch(() => {});
+          await dUser.save().catch(() => undefined);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Best-effort cleanup; uniqueness checks below remain authoritative.
+      }
 
       const org = await Organization.findById(organizationId);
       if (!org || org.isDeleted) throw new NotFoundError('Organization', organizationId);

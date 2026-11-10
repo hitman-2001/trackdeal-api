@@ -15,7 +15,13 @@ const { randomUUID } = require('node:crypto');
  */
 async function requestLoggerHook(request, reply) {
   // Assign or propagate request ID
-  const requestId = request.headers['x-request-id'] || randomUUID();
+  const suppliedRequestId = request.headers['x-request-id'];
+  const requestId =
+    typeof suppliedRequestId === 'string' &&
+    suppliedRequestId.length <= 128 &&
+    /^[A-Za-z0-9._:-]+$/.test(suppliedRequestId)
+      ? suppliedRequestId
+      : randomUUID();
   request.requestId = requestId;
   reply.header('X-Request-ID', requestId);
 

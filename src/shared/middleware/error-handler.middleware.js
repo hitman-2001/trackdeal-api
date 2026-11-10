@@ -103,7 +103,7 @@ async function globalErrorHandler(error, request, reply) {
       `Duplicate value for field '${field}'`,
       HTTP_STATUS.CONFLICT,
       'DUPLICATE_KEY',
-      { field, value: error.keyValue?.[field] },
+      { field },
     );
   }
 

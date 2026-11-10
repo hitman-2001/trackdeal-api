@@ -19,11 +19,19 @@ function isNativeClient(request) {
 
 function sessionCookieOptions(request) {
   const env = loadEnv();
+  const origin = request?.headers?.origin || '';
   const isNative = isNativeClient(request);
+  const isSecure =
+    isNative ||
+    env.NODE_ENV === 'production' ||
+    env.SESSION_COOKIE_SECURE === true ||
+    request?.protocol === 'https' ||
+    origin.startsWith('https://');
+
   return {
     httpOnly: true,
-    secure: isNative || (env.SESSION_COOKIE_SECURE ?? env.NODE_ENV === 'production'),
-    sameSite: isNative ? 'none' : env.SESSION_COOKIE_SAME_SITE,
+    secure: isSecure,
+    sameSite: isSecure ? 'none' : (env.SESSION_COOKIE_SAME_SITE || 'lax'),
     path: `${env.API_PREFIX}/auth`,
     maxAge: env.SESSION_COOKIE_MAX_AGE_SECONDS,
   };

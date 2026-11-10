@@ -3,6 +3,7 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const Fastify = require("fastify");
+const { LogController } = Fastify;
 
 const { loadEnv } = require("./config/env.config");
 const { globalMongoosePlugin } = require("./database/mongoose.plugin");
@@ -42,8 +43,26 @@ async function buildApp() {
   // 1. Create Fastify instance
   // ------------------------------------------------------------------
   const fastify = Fastify({
+    bodyLimit: env.MAX_FILE_SIZE,
+    routerOptions: {
+      maxParamLength: 200,
+    },
     logger: {
       level: env.LOG_LEVEL,
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'request.headers.authorization',
+          'request.headers.cookie',
+          '*.password',
+          '*.oldPassword',
+          '*.newPassword',
+          '*.token',
+          '*.refreshToken',
+        ],
+        censor: '[REDACTED]',
+      },
       transport: env.LOG_PRETTY
         ? {
             target: "pino-pretty",
@@ -54,12 +73,15 @@ async function buildApp() {
     // Request ID generation
     genReqId: (req) =>
       req.headers["x-request-id"] || require("node:crypto").randomUUID(),
-    requestIdLogLabel: "requestId",
+    logController: new LogController({
+      requestIdLogLabel: "requestId",
+      disableRequestLogging: true,
+    }),
 
     // Ajv validation options
     ajv: {
       customOptions: {
-        removeAdditional: false, // Preserve extra fields for debugging
+        removeAdditional: true,
         useDefaults: true,
         coerceTypes: true,
         allErrors: false,

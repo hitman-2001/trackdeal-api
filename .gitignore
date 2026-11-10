@@ -6,7 +6,6 @@ coverage/
 uploads/
 *.log
 .DS_Store
-package-lock.json
 scripts/
 test/
 tests/

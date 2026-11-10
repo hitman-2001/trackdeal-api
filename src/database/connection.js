@@ -3,7 +3,9 @@
 const dns = require('dns');
 try {
   dns.setServers(['8.8.8.8', '8.8.4.4']);
-} catch (_) {}
+} catch (_) {
+  // Keep the platform DNS configuration when custom resolvers are unavailable.
+}
 
 const mongoose = require('mongoose');
 const { databaseConfig } = require('../config/database.config');

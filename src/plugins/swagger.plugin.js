@@ -74,7 +74,7 @@ async function swaggerPlugin(fastify) {
       docExpansion: 'list',
       deepLinking: true,
       displayRequestDuration: true,
-      persistAuthorization: true,
+      persistAuthorization: false,
     },
   });
 }

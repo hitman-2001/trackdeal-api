@@ -3,7 +3,13 @@
 const { BaseService } = require('../../shared/base/BaseService');
 const { UserRepository } = require('../user/user.repository');
 const { RefreshTokenRepository } = require('./refresh-token.repository');
-const { UnauthorizedError, ConflictError, NotFoundError, ForbiddenError, BusinessRuleError } = require('../../shared/errors');
+const {
+  ValidationError,
+  UnauthorizedError,
+  NotFoundError,
+  ForbiddenError,
+  BusinessRuleError,
+} = require('../../shared/errors');
 const { AUDIT_ACTIONS, EVENTS } = require('../../shared/constants/app.constants');
 const { tenantContext } = require('../../shared/context/tenant-context');
 const bcrypt = require('bcryptjs');
@@ -834,9 +840,11 @@ class AuthService extends BaseService {
         const softDeleted = await User.find({ email: invite.email, isDeleted: true });
         for (const dUser of softDeleted) {
           dUser.email = `${dUser.email}__deleted__${dUser._id}`;
-          await dUser.save().catch(() => {});
+          await dUser.save().catch(() => undefined);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Best-effort cleanup; user creation still enforces uniqueness.
+      }
     });
 
     // Verify organization quota before creating user

@@ -339,7 +339,9 @@ class UserService extends BaseService {
               const org = await Organization.findById(targetOrgId).select('name vertical').lean();
               if (org?.name) orgName = org.name;
               if (org?.vertical === 'education') isEducation = true;
-            } catch (_) {}
+            } catch (_) {
+              // Fall back to the generic organization name in the email.
+            }
           }
 
           if (data.roleId) {
@@ -347,7 +349,9 @@ class UserService extends BaseService {
               const { Role } = require('../authorization/role.model');
               const assignedRole = await Role.findById(data.roleId).select('name code').lean();
               if (assignedRole?.name) roleName = assignedRole.name;
-            } catch (_) {}
+            } catch (_) {
+              // Fall back to the generic role name in the email.
+            }
           }
 
           // In education vertical, map Agent/broker terminology to Staff
@@ -574,7 +578,9 @@ class UserService extends BaseService {
           { $set: { status: 'cancelled' } }
         );
       }
-    } catch (_) {}
+    } catch (_) {
+      // Account deletion remains authoritative if invitation cleanup fails.
+    }
 
     await this.logAudit({
       action: AUDIT_ACTIONS.DELETE,

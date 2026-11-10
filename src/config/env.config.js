@@ -33,6 +33,7 @@ const envSchema = z.object({
 
   // CORS
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  NATIVE_APP_ORIGIN: z.string().default('https://app.trackdeal.in'),
   CORS_CREDENTIALS: z.string().default('true').transform((v) => v === 'true'),
 
   // Browser session cookie
@@ -57,7 +58,7 @@ const envSchema = z.object({
   LOG_PRETTY: z.string().default('false').transform((v) => v === 'true'),
 
   // Swagger
-  SWAGGER_ENABLED: z.string().default('true').transform((v) => v === 'true'),
+  SWAGGER_ENABLED: z.string().default('false').transform((v) => v === 'true'),
   SWAGGER_PREFIX: z.string().default('/docs'),
 });
 

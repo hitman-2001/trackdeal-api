@@ -24,12 +24,13 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=development
       - REDIS_HOST=redis
       - FCM_PROJECT_ID=${FCM_PROJECT_ID:-trackdeal-d0227}
       - FCM_SERVICE_ACCOUNT_PATH=${FCM_SERVICE_ACCOUNT_PATH:-firebase-service-account.json}
     depends_on:
       - redis
-    command: sh -c "npm install --include=dev && npx nodemon"
+    command: npm run dev
 
 volumes:
   redis_data:

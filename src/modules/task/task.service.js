@@ -424,7 +424,9 @@ class TaskService extends BaseService {
         const { LeadService } = require("../lead/lead.service");
         const leadService = new LeadService();
         await leadService.recalculateLeadScore(activity.leadId);
-      } catch (err) {}
+      } catch (err) {
+        // Score recalculation must not prevent the primary activity write.
+      }
     }
 
     return activity;
