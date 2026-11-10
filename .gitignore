@@ -8,6 +8,13 @@ uploads/
 .DS_Store
 package-lock.json
 scripts/
+test/
 tests/
+*.test.js
+*.test.mjs
+*.test.ts
+*.spec.js
+*.spec.mjs
+*.spec.ts
 firebase-service-account*.json
 *.key

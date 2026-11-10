@@ -54,6 +54,8 @@ const corsConfig = {
     'accept',
     'X-Refresh-Token',
     'x-refresh-token',
+    'X-Client-Platform',
+    'x-client-platform',
   ],
   exposedHeaders: ['X-Request-ID', 'X-Total-Count'],
 };

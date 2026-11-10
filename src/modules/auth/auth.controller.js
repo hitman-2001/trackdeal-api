@@ -4,14 +4,26 @@ const { BaseController } = require('../../shared/base/BaseController');
 const { AuthService } = require('./auth.service');
 const { loadEnv } = require('../../config/env.config');
 
+function isNativeClient(request) {
+  const origin = request?.headers?.origin || '';
+  const clientPlatform = (request?.headers?.['x-client-platform'] || '').toLowerCase();
+  return (
+    clientPlatform === 'native' ||
+    clientPlatform === 'android' ||
+    clientPlatform === 'ios' ||
+    origin.startsWith('capacitor://') ||
+    origin === 'https://localhost' ||
+    origin === 'http://localhost'
+  );
+}
+
 function sessionCookieOptions(request) {
   const env = loadEnv();
-  const origin = request?.headers?.origin || '';
-  const isNativeWebView = origin.startsWith('capacitor://') || origin === 'https://localhost';
+  const isNative = isNativeClient(request);
   return {
     httpOnly: true,
-    secure: isNativeWebView || (env.SESSION_COOKIE_SECURE ?? env.NODE_ENV === 'production'),
-    sameSite: isNativeWebView ? 'none' : env.SESSION_COOKIE_SAME_SITE,
+    secure: isNative || (env.SESSION_COOKIE_SECURE ?? env.NODE_ENV === 'production'),
+    sameSite: isNative ? 'none' : env.SESSION_COOKIE_SAME_SITE,
     path: `${env.API_PREFIX}/auth`,
     maxAge: env.SESSION_COOKIE_MAX_AGE_SECONDS,
   };
@@ -26,6 +38,11 @@ function sendAuthenticatedSession(controller, request, reply, result, message) {
   const { refreshToken, ...publicResult } = result;
   reply.setCookie(env.SESSION_COOKIE_NAME, refreshToken, sessionCookieOptions(request));
   reply.header('Cache-Control', 'no-store');
+
+  if (isNativeClient(request)) {
+    publicResult.refreshToken = refreshToken;
+  }
+
   return controller.ok(reply, publicResult, message);
 }
 
@@ -87,7 +104,10 @@ class AuthController extends BaseController {
    */
   async refresh(request, reply) {
     const env = loadEnv();
-    const refreshToken = request.cookies?.[env.SESSION_COOKIE_NAME];
+    const refreshToken =
+      request.cookies?.[env.SESSION_COOKIE_NAME] ||
+      request.headers?.['x-refresh-token'] ||
+      request.body?.refreshToken;
     const meta = { ip: request.ip, userAgent: request.headers['user-agent'] };
     try {
       const result = await this.authService.refreshToken(refreshToken, meta);
@@ -103,7 +123,10 @@ class AuthController extends BaseController {
    */
   async logout(request, reply) {
     const env = loadEnv();
-    const refreshToken = request.cookies?.[env.SESSION_COOKIE_NAME];
+    const refreshToken =
+      request.cookies?.[env.SESSION_COOKIE_NAME] ||
+      request.headers?.['x-refresh-token'] ||
+      request.body?.refreshToken;
     const userId = this.getUserId(request);
     const meta = { ip: request.ip, userAgent: request.headers['user-agent'] };
     if (refreshToken) {
