@@ -73,6 +73,17 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
     isDeleted: { type: Boolean, default: false, index: true },
+    accountDeletionRequest: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected', 'cancelled'],
+        default: undefined,
+      },
+      requestedAt: { type: Date },
+      reason: { type: String, trim: true, maxlength: 500 },
+      resolvedAt: { type: Date },
+      resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    },
 
     // Authentication
     password: { type: String, required: true, select: false },

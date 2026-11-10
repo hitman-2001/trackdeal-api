@@ -187,6 +187,24 @@ const changePasswordSchema = {
   },
 };
 
+const adminUpdatePasswordSchema = {
+  type: 'object',
+  required: ['newPassword'],
+  additionalProperties: false,
+  properties: {
+    newPassword: { type: 'string', minLength: 8, maxLength: 100 },
+  },
+};
+
+const resolveAccountDeletionRequestSchema = {
+  type: 'object',
+  required: ['decision'],
+  additionalProperties: false,
+  properties: {
+    decision: { type: 'string', enum: ['approve', 'reject'] },
+  },
+};
+
 module.exports = {
   userIdParamSchema,
   createUserSchema,
@@ -201,4 +219,6 @@ module.exports = {
   acceptInviteSchema,
   updateProfileSchema,
   changePasswordSchema,
+  adminUpdatePasswordSchema,
+  resolveAccountDeletionRequestSchema,
 };

@@ -7,6 +7,9 @@ const { AUDIT_ACTIONS } = require('../../shared/constants/app.constants');
 const { tenantContext } = require('../../shared/context/tenant-context');
 const { UserInvitationRepository } = require('./user-invitation.repository');
 const { PermissionRepository } = require('../authorization/permission.repository');
+const { NotificationService } = require('../notification/notification.service');
+const { Role } = require('../authorization/role.model');
+const { RefreshToken } = require('../auth/refresh-token.model');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
@@ -20,6 +23,144 @@ class UserService extends BaseService {
     this.userRepository = deps.userRepository || new UserRepository();
     this.userInvitationRepository = deps.userInvitationRepository || new UserInvitationRepository();
     this.permissionRepository = deps.permissionRepository || new PermissionRepository();
+    this.notificationService = deps.notificationService || new NotificationService(deps);
+    this.roleModel = deps.roleModel || Role;
+    this.refreshTokenModel = deps.refreshTokenModel || RefreshToken;
+  }
+
+  /**
+   * Record an account deletion request and notify every active administrator
+   * in the user's organization. Repeated submissions are idempotent.
+   */
+  async requestAccountDeletion(actor, reason = '') {
+    const user = await this.userRepository.findByIdOrFail(actor.id, 'User');
+    if (user.accountDeletionRequest?.status === 'pending') {
+      return {
+        status: 'pending',
+        requestedAt: user.accountDeletionRequest.requestedAt,
+        alreadyRequested: true,
+      };
+    }
+
+    const requestedAt = new Date();
+    const normalizedReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : '';
+    await this.userRepository.update(user.id || user._id, {
+      accountDeletionRequest: {
+        status: 'pending',
+        requestedAt,
+        ...(normalizedReason ? { reason: normalizedReason } : {}),
+      },
+      updatedBy: actor.id,
+    });
+
+    const adminRoles = await this.roleModel.find({
+      code: { $in: ['org_admin', 'organization_admin'] },
+      isActive: true,
+    }).select('_id').lean();
+    const adminRoleIds = adminRoles.map((role) => role._id);
+    const admins = adminRoleIds.length && user.organizationId
+      ? await this.userRepository.model.find({
+        organizationId: user.organizationId,
+        roleId: { $in: adminRoleIds },
+        _id: { $ne: user._id },
+        status: 'active',
+        isDeleted: false,
+      }).select('_id').lean()
+      : [];
+
+    const requesterName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+    await Promise.allSettled(admins.map((admin) => this.notificationService.send({
+      recipientId: admin._id,
+      title: 'Account deletion requested',
+      message: `${requesterName} (${user.email}) has requested to delete their account.`,
+      type: 'warning',
+      channel: 'in_app',
+      entityType: 'User',
+      entityId: user._id,
+      actionUrl: '/app/settings/users',
+      metadata: {
+        event: 'account_deletion_requested',
+        requesterId: String(user._id),
+        requesterEmail: user.email,
+        requestedAt: requestedAt.toISOString(),
+        ...(normalizedReason ? { reason: normalizedReason } : {}),
+      },
+    })));
+
+    await this.logAudit({
+      action: AUDIT_ACTIONS.UPDATE,
+      entity: 'User',
+      entityId: user.id || user._id,
+      userId: actor.id,
+      description: `User '${user.email}' requested account deletion`,
+      newValues: { accountDeletionRequest: { status: 'pending', requestedAt } },
+    });
+
+    return { status: 'pending', requestedAt, alreadyRequested: false };
+  }
+
+  /**
+   * Approve or reject a pending deletion request. Approval delegates to the
+   * existing soft-delete workflow; rejection re-enables self-service requests.
+   */
+  async resolveAccountDeletionRequest(id, decision, actor) {
+    const adminRoles = ['org_admin', 'organization_admin', 'super_admin', 'system_admin'];
+    if (!adminRoles.includes(String(actor.role || '').toLowerCase())) {
+      throw new ForbiddenError('Only an Organization Admin can review account deletion requests.');
+    }
+
+    const user = await this.userRepository.findByIdOrFail(id, 'User');
+    const isPlatformAdmin = ['super_admin', 'system_admin'].includes(String(actor.role || '').toLowerCase());
+    if (!isPlatformAdmin && String(user.organizationId || '') !== String(actor.organizationId || '')) {
+      throw new ForbiddenError('You can only review requests from users in your own organization.');
+    }
+    if (user.accountDeletionRequest?.status !== 'pending') {
+      throw new BusinessRuleError('This account does not have a pending deletion request.');
+    }
+
+    const resolvedAt = new Date();
+    if (decision === 'approve') {
+      const deletion = await this.deleteUser(id, actor);
+      await this.userRepository.model.updateOne(
+        { _id: id, isDeleted: true },
+        { $set: {
+          'accountDeletionRequest.status': 'approved',
+          'accountDeletionRequest.resolvedAt': resolvedAt,
+          'accountDeletionRequest.resolvedBy': actor.id,
+        } },
+      );
+      return { status: 'approved', ...deletion };
+    }
+
+    await this.userRepository.update(id, {
+      'accountDeletionRequest.status': 'rejected',
+      'accountDeletionRequest.resolvedAt': resolvedAt,
+      'accountDeletionRequest.resolvedBy': actor.id,
+      updatedBy: actor.id,
+    });
+
+    await this.notificationService.send({
+      recipientId: user._id || user.id,
+      title: 'Account deletion request declined',
+      message: 'Your organization administrator declined your account deletion request. You can submit a new request if needed.',
+      type: 'info',
+      channel: 'in_app',
+      entityType: 'User',
+      entityId: user._id || user.id,
+      actionUrl: '/app/dashboard',
+      metadata: { event: 'account_deletion_request_rejected', resolvedAt: resolvedAt.toISOString() },
+    });
+
+    await this.logAudit({
+      action: AUDIT_ACTIONS.UPDATE,
+      entity: 'User',
+      entityId: user._id || user.id,
+      userId: actor.id,
+      description: `Account deletion request rejected for '${user.email}'`,
+      newValues: { accountDeletionRequest: { status: 'rejected', resolvedAt } },
+    });
+
+    return { status: 'rejected', resolvedAt };
   }
 
   /**
@@ -725,6 +866,57 @@ class UserService extends BaseService {
     });
 
     return updated;
+  }
+
+  /**
+   * Allow an organization administrator to set a password for a user in the
+   * same organization. Existing sessions are revoked immediately.
+   */
+  async updatePasswordAsAdmin(id, newPassword, actor) {
+    const adminRoles = ['org_admin', 'organization_admin', 'super_admin', 'system_admin'];
+    if (!adminRoles.includes(String(actor.role || '').toLowerCase())) {
+      throw new ForbiddenError('Only an Organization Admin can update user passwords.');
+    }
+    if (String(id) === String(actor.id)) {
+      throw new BusinessRuleError('Use Change Password to update your own password.');
+    }
+
+    const user = await this.userRepository.findByIdOrFail(id, 'User');
+    const isPlatformAdmin = ['super_admin', 'system_admin'].includes(String(actor.role || '').toLowerCase());
+    if (!isPlatformAdmin && String(user.organizationId || '') !== String(actor.organizationId || '')) {
+      throw new ForbiddenError('You can only update passwords for users in your own organization.');
+    }
+
+    const targetRole = await this.roleModel.findById(user.roleId).select('code').lean();
+    if (!isPlatformAdmin && ['super_admin', 'system_admin'].includes(String(targetRole?.code || '').toLowerCase())) {
+      throw new ForbiddenError('Organization Admins cannot update a platform administrator password.');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    const passwordChangedAt = new Date();
+    await this.userRepository.update(id, {
+      password: hashedPassword,
+      passwordChangedAt,
+      loginAttempts: 0,
+      lockoutUntil: null,
+      forcePasswordChange: false,
+      updatedBy: actor.id,
+    });
+
+    await tenantContext.run({ isSystemOverride: true }, () =>
+      this.refreshTokenModel.updateMany(
+        { user: id, isRevoked: false },
+        { $set: { isRevoked: true } },
+      )
+    );
+
+    await this.logAudit({
+      action: AUDIT_ACTIONS.UPDATE,
+      entity: 'User',
+      entityId: id,
+      userId: actor.id,
+      description: `Organization administrator updated the password for '${user.email}'. All active sessions were revoked.`,
+    });
   }
 
   // -------------------------------------------------------------------------

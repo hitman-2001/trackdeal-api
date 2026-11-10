@@ -30,6 +30,8 @@ const {
   assignRoleSchema,
   updateUserPermissionsSchema,
   transferBranchSchema,
+  adminUpdatePasswordSchema,
+  resolveAccountDeletionRequestSchema,
 } = require("../user/user.validation");
 const {
   assignPermissionsSchema,
@@ -214,6 +216,16 @@ async function settingsRoutes(fastify, opts) {
     preHandler: [authorize(PERMISSIONS.USERS_UPDATE)],
     schema: { body: assignRoleSchema },
     handler: userController.assignRole.bind(userController),
+  });
+  fastify.put("/users/:id/password", {
+    preHandler: [authorize(PERMISSIONS.USERS_UPDATE)],
+    schema: { body: adminUpdatePasswordSchema },
+    handler: userController.updatePassword.bind(userController),
+  });
+  fastify.patch("/users/:id/account-deletion-request", {
+    preHandler: [authorize(PERMISSIONS.USERS_DELETE)],
+    schema: { body: resolveAccountDeletionRequestSchema },
+    handler: userController.resolveAccountDeletionRequest.bind(userController),
   });
   fastify.delete("/users/:id", {
     preHandler: [authorize(PERMISSIONS.USERS_DELETE)],

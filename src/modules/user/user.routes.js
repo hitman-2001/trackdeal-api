@@ -18,6 +18,8 @@ const {
   acceptInviteSchema,
   updateProfileSchema,
   changePasswordSchema,
+  adminUpdatePasswordSchema,
+  resolveAccountDeletionRequestSchema,
 } = require('./user.validation');
 
 /**
@@ -153,6 +155,28 @@ async function userRoutes(fastify, opts) {
     handler: controller.suspend,
   });
 
+  fastify.put('/:id/password', {
+    preHandler: [requirePermission(PERMISSIONS.USERS_UPDATE)],
+    schema: {
+      tags: ['Users'],
+      summary: 'Update a user password as an organization administrator',
+      params: userIdParamSchema,
+      body: adminUpdatePasswordSchema,
+    },
+    handler: controller.updatePassword,
+  });
+
+  fastify.patch('/:id/account-deletion-request', {
+    preHandler: [requirePermission(PERMISSIONS.USERS_DELETE)],
+    schema: {
+      tags: ['Users'],
+      summary: 'Approve or reject a pending account deletion request',
+      params: userIdParamSchema,
+      body: resolveAccountDeletionRequestSchema,
+    },
+    handler: controller.resolveAccountDeletionRequest,
+  });
+
   // -------------------------------------------------------------------------
   // Role & Branch Transfer / Assignments
   // -------------------------------------------------------------------------
@@ -254,6 +278,21 @@ async function userRoutes(fastify, opts) {
       body: changePasswordSchema,
     },
     handler: controller.changePasswordMe,
+  });
+
+  fastify.post('/me/account-deletion-request', {
+    schema: {
+      tags: ['Profile'],
+      summary: 'Request deletion of the authenticated user account',
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          reason: { type: 'string', maxLength: 500 },
+        },
+      },
+    },
+    handler: controller.requestAccountDeletionMe,
   });
 
   fastify.post('/me/avatar', {

@@ -115,6 +115,38 @@ class UserController extends BaseController {
   }
 
   /**
+   * PUT /users/:id/password
+   */
+  async updatePassword(request, reply) {
+    const actor = this.getUser(request);
+    await this.userService.updatePasswordAsAdmin(
+      request.params.id,
+      request.body.newPassword,
+      actor,
+    );
+    return this.ok(reply, null, 'User password updated successfully. Their active sessions have been revoked.');
+  }
+
+  /**
+   * PATCH /users/:id/account-deletion-request
+   */
+  async resolveAccountDeletionRequest(request, reply) {
+    const actor = this.getUser(request);
+    const result = await this.userService.resolveAccountDeletionRequest(
+      request.params.id,
+      request.body.decision,
+      actor,
+    );
+    return this.ok(
+      reply,
+      result,
+      request.body.decision === 'approve'
+        ? 'Account deletion request approved and the user account was deleted'
+        : 'Account deletion request rejected. The user may submit another request',
+    );
+  }
+
+  /**
    * POST /users/:id/assign-role
    */
   async assignRole(request, reply) {
@@ -210,6 +242,21 @@ class UserController extends BaseController {
     const actor = this.getUser(request);
     await this.userService.changePassword(actor, request.body);
     return this.ok(reply, null, 'Password changed successfully');
+  }
+
+  /**
+   * POST /users/me/account-deletion-request
+   */
+  async requestAccountDeletionMe(request, reply) {
+    const actor = this.getUser(request);
+    const result = await this.userService.requestAccountDeletion(actor, request.body?.reason);
+    return this.ok(
+      reply,
+      result,
+      result.alreadyRequested
+        ? 'Your account deletion request is already pending'
+        : 'Your account deletion request has been sent to your organization administrator',
+    );
   }
 
   /**
