@@ -3,7 +3,6 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const Fastify = require("fastify");
-const { LogController } = Fastify;
 
 const { loadEnv } = require("./config/env.config");
 const { globalMongoosePlugin } = require("./database/mongoose.plugin");
@@ -25,6 +24,19 @@ const rateLimitPlugin = require("./plugins/rate-limit.plugin");
 const jwtPlugin = require("./plugins/jwt.plugin");
 const swaggerPlugin = require("./plugins/swagger.plugin");
 const multipartPlugin = require("./plugins/multipart.plugin");
+
+const requestLogOptions = Fastify.LogController
+  ? {
+      logController: new Fastify.LogController({
+        requestIdLogLabel: "requestId",
+        disableRequestLogging: true,
+      }),
+    }
+  : {
+      // Fastify versions before LogController was exported.
+      requestIdLogLabel: "requestId",
+      disableRequestLogging: true,
+    };
 
 // ---------------------------------------------------------------------------
 // Application Factory
@@ -73,10 +85,7 @@ async function buildApp() {
     // Request ID generation
     genReqId: (req) =>
       req.headers["x-request-id"] || require("node:crypto").randomUUID(),
-    logController: new LogController({
-      requestIdLogLabel: "requestId",
-      disableRequestLogging: true,
-    }),
+    ...requestLogOptions,
 
     // Ajv validation options
     ajv: {
