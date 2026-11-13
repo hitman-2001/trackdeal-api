@@ -52,8 +52,6 @@ const corsConfig = {
     'x-tenant-id',
     'Accept',
     'accept',
-    'X-Refresh-Token',
-    'x-refresh-token',
     'X-Client-Platform',
     'x-client-platform',
   ],

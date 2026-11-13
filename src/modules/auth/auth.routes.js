@@ -134,9 +134,7 @@ async function authRoutes(fastify, _opts) {
       body: {
         type: ['object', 'null'],
         additionalProperties: false,
-        properties: {
-          refreshToken: { type: 'string' },
-        },
+        properties: {},
       },
     },
     handler: controller.refresh,
@@ -151,9 +149,7 @@ async function authRoutes(fastify, _opts) {
       body: {
         type: ['object', 'null'],
         additionalProperties: false,
-        properties: {
-          refreshToken: { type: 'string' },
-        },
+        properties: {},
       },
     },
     handler: controller.logout,

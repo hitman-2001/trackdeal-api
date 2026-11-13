@@ -28,12 +28,16 @@ function sessionCookieOptions(request) {
     request?.protocol === 'https' ||
     origin.startsWith('https://');
 
+  const maxAge = env.SESSION_COOKIE_MAX_AGE_SECONDS;
+
   return {
     httpOnly: true,
     secure: isSecure,
     sameSite: isSecure ? 'none' : (env.SESSION_COOKIE_SAME_SITE || 'lax'),
     path: `${env.API_PREFIX}/auth`,
-    maxAge: env.SESSION_COOKIE_MAX_AGE_SECONDS,
+    maxAge,
+    // Expires improves persistence compatibility with Android WebView cookie stores.
+    expires: new Date(Date.now() + maxAge * 1000),
   };
 }
 
@@ -46,10 +50,6 @@ function sendAuthenticatedSession(controller, request, reply, result, message) {
   const { refreshToken, ...publicResult } = result;
   reply.setCookie(env.SESSION_COOKIE_NAME, refreshToken, sessionCookieOptions(request));
   reply.header('Cache-Control', 'no-store');
-
-  if (isNativeClient(request)) {
-    publicResult.refreshToken = refreshToken;
-  }
 
   return controller.ok(reply, publicResult, message);
 }
@@ -113,9 +113,7 @@ class AuthController extends BaseController {
   async refresh(request, reply) {
     const env = loadEnv();
     const refreshToken =
-      request.cookies?.[env.SESSION_COOKIE_NAME] ||
-      request.headers?.['x-refresh-token'] ||
-      request.body?.refreshToken;
+      request.cookies?.[env.SESSION_COOKIE_NAME];
     const meta = { ip: request.ip, userAgent: request.headers['user-agent'] };
     try {
       const result = await this.authService.refreshToken(refreshToken, meta);
@@ -132,9 +130,7 @@ class AuthController extends BaseController {
   async logout(request, reply) {
     const env = loadEnv();
     const refreshToken =
-      request.cookies?.[env.SESSION_COOKIE_NAME] ||
-      request.headers?.['x-refresh-token'] ||
-      request.body?.refreshToken;
+      request.cookies?.[env.SESSION_COOKIE_NAME];
     const userId = this.getUserId(request);
     const meta = { ip: request.ip, userAgent: request.headers['user-agent'] };
     if (refreshToken) {
