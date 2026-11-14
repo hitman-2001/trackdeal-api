@@ -390,7 +390,7 @@ class AuthService extends BaseService {
   }
 
   /**
-   * Refresh token pair with active session verification and Token Reuse Detection.
+   * Refresh the access token using the active seven-day session cookie.
    * @param {string} token - Raw refresh token
    * @param {object} meta  - { ip, userAgent }
    * @returns {{ accessToken, refreshToken }}
@@ -412,21 +412,8 @@ class AuthService extends BaseService {
         throw new UnauthorizedError('Invalid refresh token');
       }
 
-      // Token Reuse Detection (Replay Hack Attempt Mitigation)
       if (storedToken.isUsed || storedToken.isRevoked) {
-        // Invalidate all active sessions for this compromised user immediately
-        await this.refreshTokenRepository.revokeAllForUser(storedToken.user._id);
-
-        await this.logAudit({
-          action: AUDIT_ACTIONS.SECURITY_ALERT,
-          entity: 'User',
-          entityId: storedToken.user._id,
-          userId: storedToken.user._id,
-          description: `Security Warning: Refresh token reuse detected! All user sessions revoked.`,
-          requestMetadata: meta,
-        });
-
-        throw new UnauthorizedError('Security Warning: Session hijacked. All user sessions have been terminated.');
+        throw new UnauthorizedError('Refresh session has been revoked. Please log in again.');
       }
 
       if (storedToken.expiresAt < new Date()) {
@@ -438,34 +425,14 @@ class AuthService extends BaseService {
         throw new UnauthorizedError('User not found or inactive');
       }
 
-      // Establish target organization context for rotation execution
+      // Establish the user's organization context before building permissions.
       return tenantContext.run({
         tenantId: user.tenantId,
         organizationId: user.organizationId,
         branchId: user.branchId,
       }, async () => {
-        // Rotate token! Mark old as used
-        storedToken.isUsed = true;
-
         const tokenPayload = await this._buildTokenPayload(user);
         const newAccessToken = this.tokenService.signAccessToken(tokenPayload);
-        const newRefreshToken = this.tokenService.signRefreshToken({ id: user.id });
-        const newHash = this._hashToken(newRefreshToken);
-
-        storedToken.replacedByToken = newHash;
-        await storedToken.save();
-
-        // Create the new refresh token in DB
-        const deviceMeta = this._parseUserAgent(meta.userAgent);
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-        await this.refreshTokenRepository.create({
-          token: newHash,
-          user: user._id,
-          device: deviceMeta.deviceType,
-          ip: meta.ip || storedToken.ip,
-          expiresAt,
-        });
 
         const sanitizedUser = this._sanitizeUser(user);
         sanitizedUser.role = tokenPayload.role;
@@ -482,7 +449,7 @@ class AuthService extends BaseService {
 
         return {
           accessToken: newAccessToken,
-          refreshToken: newRefreshToken,
+          refreshToken: token,
           user: sanitizedUser,
         };
       });

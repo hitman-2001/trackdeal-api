@@ -117,7 +117,10 @@ class AuthController extends BaseController {
     const meta = { ip: request.ip, userAgent: request.headers['user-agent'] };
     try {
       const result = await this.authService.refreshToken(refreshToken, meta);
-      return sendAuthenticatedSession(this, request, reply, result, 'Token refreshed successfully');
+      const publicResult = { ...result };
+      delete publicResult.refreshToken;
+      reply.header('Cache-Control', 'no-store');
+      return this.ok(reply, publicResult, 'Token refreshed successfully');
     } catch (error) {
       reply.clearCookie(env.SESSION_COOKIE_NAME, sessionCookieOptions(request));
       throw error;
